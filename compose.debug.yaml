@@ -1,0 +1,8 @@
+# OPTIONAL: expose PostgreSQL to this machine only, for debugging with a GUI
+# client, on host port 5433 (5432 is often taken by a native PostgreSQL).
+# Not part of normal startup. Use it explicitly:
+#   docker compose -f compose.yaml -f compose.debug.yaml up
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"

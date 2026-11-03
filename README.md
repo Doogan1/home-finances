@@ -6,8 +6,9 @@ TypeScript, PostgreSQL, Prisma and the Plaid Node SDK.
 
 Design and scope live in [docs/home-finances-spec.md](docs/home-finances-spec.md);
 the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-implementation-plan.md).
-This repository currently covers **Task 1 (containerized dev environment)** and
-**Task 2 (database schema and encrypted token storage)**.
+This repository currently covers **Task 1 (containerized dev environment)**,
+**Task 2 (database schema and encrypted token storage)** and **Task 3 (closed
+household authentication)**.
 Nothing here deploys anything or contacts a bank.
 
 ## Prerequisites
@@ -21,9 +22,14 @@ Nothing here deploys anything or contacts a bank.
 npm run setup:env
 docker compose up --build -d
 docker compose exec app npm run db:migrate
+docker compose exec app npm run auth:bootstrap
 ```
 
-Then open <http://localhost:3000>. The app is published on `127.0.0.1` only.
+`auth:bootstrap` asks for your name, email and a password (typed hidden, 12+
+characters) and creates the household and its first member. Registration through
+the website is closed; this command is the only way accounts are created.
+
+Then open <http://localhost:3000> and sign in. The app is published on `127.0.0.1` only.
 (`db:migrate` creates the tables and the restricted database role. It is safe to
 re-run and is only needed on first setup and after pulling new migrations.)
 Drop the `-d` to watch the logs in the foreground instead.
@@ -48,11 +54,19 @@ docker compose exec app npm run test:integration   # needs the db service; uses 
 docker compose exec app npm run build
 docker compose exec app npm run db:migrate         # apply migrations + refresh app-role grants
 docker compose exec app npm run db:migrate:dev -- --name describe_the_change   # create a NEW migration
+docker compose exec app npm run auth:bootstrap -- --add-member   # add another person to the household
 docker compose logs -f app
 ```
 
-`npm run test:e2e` intentionally fails for now: browser tests (Playwright) arrive
-with authentication in Task 3, and an unexecuted browser test is not a pass.
+Browser tests (Playwright) run **on the host** against the running stack:
+
+```bash
+npx playwright install chromium   # once; downloads a browser (~120 MB)
+npm run test:e2e                  # needs `docker compose up` running
+```
+
+They create a labelled throwaway user in the development database and delete it
+afterwards; see [docs/auth.md](docs/auth.md).
 
 Build the production image (prepared locally only, never deployed):
 
@@ -112,7 +126,7 @@ In a host-run `.env`, use `127.0.0.1:5433` in place of `db:5432` in `DATABASE_UR
   - `APP_DB_USER` (`home_finances_app`) is what `DATABASE_URL` connects as: read/write rows only. It cannot create or alter tables, create databases or roles, truncate, or read migration history (all covered by integration tests). `db:migrate` creates it and re-applies its grants after every migration.
   - Dev concession: the dev container receives *both* URLs (via `env_file`) so it can run migrations. Application code only ever reads `DATABASE_URL`. A production setup would run migrations from a separate job holding the owner credential and give the app container only `DATABASE_URL`.
 - **Money and nulls.** Amounts are `Decimal(19,4)`; nullable balances mean "not reported", never zero. A transaction's account must belong to the same Item (composite foreign key), so cross-connection rows are rejected by the database itself.
-- **Sessions table is provisional.** It stores only a hash of a session token. Task 3 picks the auth library and may adjust it in a later migration.
+- **Sessions and users.** Task 3 reshaped `User` and `Session` for Better Auth and added `AuthAccount`, `Verification` and `RateLimit` (migrations `better_auth_tables` and `verification_table`); see docs/auth.md.
 - **Integration tests never touch your data.** Each run creates a uniquely named `hf_test_*` database, applies the committed migrations, and drops it afterwards. They must run inside the app container (`MIGRATION_DATABASE_URL` points at the `db` service).
 - **Standalone scripts are `.mts`** (ESM) because the project is CommonJS by default; `tsx` cannot use top-level `await` in a plain `.ts` file there.
 
@@ -126,6 +140,20 @@ Plaid access tokens are encrypted before storage with AES-256-GCM (`src/lib/cryp
 ### Existing `.env` from Task 1
 
 `npm run setup:env` refuses to overwrite `.env`. If yours predates Task 2 it lacks `APP_DB_USER`, `APP_DB_PASSWORD` and `MIGRATION_DATABASE_URL`. Add them (compare with `.env.example`: `MIGRATION_DATABASE_URL` is your old `DATABASE_URL`, and the new `DATABASE_URL` uses the app role), then `docker compose up -d app` to reload them and `docker compose exec app npm run db:migrate`.
+
+## Choices made in Task 3
+
+Authentication uses **Better Auth** with **Argon2id** password hashing, closed
+registration and a CLI bootstrap. The rationale, trade-offs, cookie settings,
+throttling behaviour and the rule "authorize in every page, action and route,
+using the household from the session" are in [docs/auth.md](docs/auth.md).
+Highlights:
+
+- `requireHousehold()` returns `{ userId, householdId }` from the server-side session; the browser never supplies a household id.
+- Custom mutation routes begin with `authorizeMutation(request)` (Origin check, then session).
+- Session cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` on https. Plain `http` is accepted only for `localhost`.
+- Sign-in is limited to 5 attempts a minute, shared by all callers (the app does not trust `X-Forwarded-For`).
+- `APP_URL` must match the address you browse to, because the Origin check compares against it.
 
 ## Layout
 
@@ -142,11 +170,17 @@ src/app/                            App Router pages and route handlers
 src/lib/config.ts                   validated server configuration (server-only)
 src/lib/db.ts                       Prisma client factory and per-process singleton
 src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
+src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
+src/lib/data/                       household-scoped data access helpers
+src/proxy.ts                        optimistic redirect for visitors with no session cookie
+src/app/login/, src/app/api/auth/   login page and the Better Auth route handler
+scripts/bootstrap-user.mts          `npm run auth:bootstrap` (hidden password prompt)
+playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)
 tests/                              Vitest unit tests; *.integration.test.ts use a real database
 ```
 
 ## Not yet covered
 
-Authentication, Plaid linking, sync, backups and future deployment prerequisites
-arrive in Tasks 3–7 of the plan. Do not deploy this app or point it at real bank
+Plaid linking, sync, backups and future deployment prerequisites
+arrive in Tasks 4–7 of the plan. Do not deploy this app or point it at real bank
 accounts until then.

@@ -37,16 +37,69 @@ model Household {
   linkAttempts LinkAttempt[]
 }
 
+// User, Session, AuthAccount and RateLimit are the tables Better Auth reads and
+// writes (docs/auth.md explains why we use it). Their shape follows its core
+// schema; ids are UUIDs (`advanced.database.generateId: "uuid"`). The password
+// hash lives on the credential AuthAccount row, not on User.
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
   // Normalised to lower case by the application before it is stored.
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  memberships Membership[]
-  sessions    Session[]
+  memberships  Membership[]
+  sessions     Session[]
+  authAccounts AuthAccount[]
+}
+
+// Named AuthAccount (not Account) because Account is a bank account here.
+model AuthAccount {
+  id                    String    @id @default(uuid()) @db.Uuid
+  // For the "credential" provider this is the user's own id.
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  // Argon2id hash (PHC string) for the credential provider; never plaintext.
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+// Required by Better Auth's startup schema check. It holds one-time tokens for
+// email verification and password reset, neither of which we enable (closed
+// registration, no outbound email), so this table stays empty.
+model Verification {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// Sign-in throttling counters. One row per (client bucket, path).
+model RateLimit {
+  id          String @id @default(uuid()) @db.Uuid
+  key         String @unique
+  count       Int
+  lastRequest BigInt
 }
 
 model Membership {
@@ -63,15 +116,19 @@ model Membership {
   @@index([householdId])
 }
 
-// Server-side sessions. Only a hash of the session token is stored. Task 3
-// chooses the auth library and may adjust this shape in a later migration.
+// Server-side sessions managed by Better Auth. Revocation (logout, "sign out
+// everywhere") deletes the row, so a missing row means no session. The browser
+// holds only the token signed with AUTH_SECRET: a database read alone cannot
+// forge a cookie.
 model Session {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  tokenHash String    @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique
   expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   linkAttempts LinkAttempt[]

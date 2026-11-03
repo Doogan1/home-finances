@@ -50,3 +50,8 @@ next-env.d.ts
 
 # generated Prisma client (run `npm run db:generate`)
 /src/generated/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/

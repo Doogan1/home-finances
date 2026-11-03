@@ -119,15 +119,15 @@ describe("uniqueness of provider identifiers", () => {
     });
   });
 
-  it("rejects duplicate user emails and duplicate session token hashes", async () => {
+  it("rejects duplicate user emails and duplicate session tokens", async () => {
     const user = await prisma.user.create({
-      data: { email: "a@example.test", passwordHash: "x" },
+      data: { name: "A", email: "a@example.test" },
     });
     await expect(
-      prisma.user.create({ data: { email: "a@example.test", passwordHash: "y" } }),
+      prisma.user.create({ data: { name: "A2", email: "a@example.test" } }),
     ).rejects.toMatchObject({ code: "P2002" });
 
-    const session = { userId: user.id, tokenHash: "hash1", expiresAt: new Date(Date.now() + 1e6) };
+    const session = { userId: user.id, token: "token1", expiresAt: new Date(Date.now() + 1e6) };
     await prisma.session.create({ data: session });
     await expect(prisma.session.create({ data: session })).rejects.toMatchObject({
       code: "P2002",
@@ -137,7 +137,7 @@ describe("uniqueness of provider identifiers", () => {
   it("rejects a user being a member of the same household twice", async () => {
     const household = await seedHousehold();
     const user = await prisma.user.create({
-      data: { email: "m@example.test", passwordHash: "x" },
+      data: { name: "M", email: "m@example.test" },
     });
     await prisma.membership.create({ data: { userId: user.id, householdId: household.id } });
 
@@ -268,9 +268,9 @@ describe("foreign keys", () => {
 
   it("keeps a link attempt for reconciliation when its session is deleted", async () => {
     const household = await seedHousehold();
-    const user = await prisma.user.create({ data: { email: "s@example.test", passwordHash: "x" } });
+    const user = await prisma.user.create({ data: { name: "S", email: "s@example.test" } });
     const session = await prisma.session.create({
-      data: { userId: user.id, tokenHash: "h", expiresAt: new Date(Date.now() + 1e6) },
+      data: { userId: user.id, token: "t", expiresAt: new Date(Date.now() + 1e6) },
     });
     const attempt = await prisma.linkAttempt.create({
       data: {
@@ -336,11 +336,11 @@ describe("the restricted application role", () => {
     await withAppClient(async (c) => {
       const email = `role-${randomUUID()}@example.test`;
       const inserted = await c.query(
-        `insert into "User" (id, email, "passwordHash", "updatedAt")
-         values (gen_random_uuid(), $1, 'x', now()) returning id`,
+        `insert into "User" (id, name, email, "updatedAt")
+         values (gen_random_uuid(), 'Role probe', $1, now()) returning id`,
         [email],
       );
-      await c.query(`update "User" set "passwordHash" = 'y' where id = $1`, [inserted.rows[0].id]);
+      await c.query(`update "User" set name = 'Renamed' where id = $1`, [inserted.rows[0].id]);
       const selected = await c.query(`select email from "User" where id = $1`, [inserted.rows[0].id]);
       expect(selected.rows[0].email).toBe(email);
       await c.query(`delete from "User" where id = $1`, [inserted.rows[0].id]);

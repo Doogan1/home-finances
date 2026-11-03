@@ -85,7 +85,7 @@ describe("requireHousehold", () => {
     const { cookie, userId, householdId } = await signedInCookie();
     state.headers = new Headers({ cookie });
 
-    await expect(requireHousehold()).resolves.toEqual({ userId, householdId });
+    await expect(requireHousehold()).resolves.toEqual({ userId, householdId, sessionId: expect.any(String) });
   });
 
   it("requireHouseholdOrRedirect sends anonymous visitors to /login", async () => {
@@ -122,7 +122,7 @@ describe("authorizeMutation", () => {
 
     const result = await authorizeMutation(mutation(BASE_URL));
 
-    expect(result).toEqual({ ok: true, context: { userId, householdId } });
+    expect(result).toEqual({ ok: true, context: { userId, householdId, sessionId: expect.any(String) } });
   });
 });
 

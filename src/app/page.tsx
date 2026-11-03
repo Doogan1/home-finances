@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
@@ -34,7 +35,14 @@ async function Household() {
         Signed in as <strong>{user.name}</strong> ({user.email}) · household{" "}
         <strong>{household.name}</strong>
       </p>
-      <p className="muted">Bank connections arrive in the next task.</p>
+      <ul>
+        <li>
+          <Link href="/connections">Connections</Link> — link a bank and see its status
+        </li>
+        <li>
+          <Link href="/accounts">Accounts</Link> — balances, with when each was observed
+        </li>
+      </ul>
       <SignOutButton />
     </>
   );

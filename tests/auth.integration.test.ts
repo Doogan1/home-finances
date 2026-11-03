@@ -227,7 +227,7 @@ describe("authorization of requests", () => {
       new Headers({ cookie, "x-household-id": randomUUID() }),
     );
 
-    expect(resolved).toEqual({ userId, householdId });
+    expect(resolved).toEqual({ userId, householdId, sessionId: expect.any(String) });
   });
 
   it("denies an expired session", async () => {
@@ -330,10 +330,12 @@ describe("cross-household isolation", () => {
     expect(await resolveHousehold({ auth, db: app }, new Headers({ cookie: sessionA.cookie }))).toEqual({
       userId: a.userId,
       householdId: a.householdId,
+      sessionId: expect.any(String),
     });
     expect(await resolveHousehold({ auth, db: app }, new Headers({ cookie: sessionB.cookie }))).toEqual({
       userId: b.userId,
       householdId: b.householdId,
+      sessionId: expect.any(String),
     });
   });
 });

@@ -1,0 +1,104 @@
+import "server-only";
+import { z } from "zod";
+import {
+  PlaidFlowError,
+  PlaidNotConfiguredError,
+  PlaidProviderError,
+  type PlaidErrorKind,
+} from "./types";
+
+/**
+ * Shared plumbing for the Plaid route handlers: uncacheable JSON responses,
+ * strict body parsing, and the one place where internal failures become the
+ * (deliberately vague) messages a browser may see.
+ */
+
+const MAX_BODY_BYTES = 4 * 1024;
+
+export function jsonNoStore(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    // Household data and one-time tokens must never sit in a shared cache.
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
+  });
+}
+
+/** Parse a small JSON body against a strict schema; null means "reject with 400". */
+export async function readJson<T extends z.ZodType>(
+  request: Request,
+  schema: T,
+): Promise<z.infer<T> | null> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY_BYTES) return null;
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) return null;
+  try {
+    const parsed = schema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function badRequest(): Response {
+  return jsonNoStore({ error: "invalid_request", message: "The request was not understood." }, 400);
+}
+
+type Mapped = { status: number; error: string; message: string };
+
+const FLOW: Record<Exclude<PlaidFlowError["code"], "provider_error">, Mapped> = {
+  attempt_not_found: { status: 404, error: "attempt_not_found", message: "That connection attempt was not found. Start again." },
+  attempt_expired: { status: 410, error: "attempt_expired", message: "That connection attempt expired. Start again." },
+  attempt_used: { status: 409, error: "attempt_used", message: "That connection attempt was already used. Start again." },
+  connection_not_found: { status: 404, error: "connection_not_found", message: "That connection was not found." },
+  invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
+  duplicate_item: { status: 409, error: "duplicate_item", message: "That bank login is already connected." },
+  persistence_failed: { status: 500, error: "persistence_failed", message: "The bank was reached but the connection could not be saved. Start again; nothing was kept." },
+  token_unreadable: { status: 500, error: "token_unreadable", message: "The stored connection key can no longer be read. Reconnect this bank." },
+};
+
+const PROVIDER: Record<PlaidErrorKind, Mapped> = {
+  rate_limited: { status: 429, error: "rate_limited", message: "Plaid is rate limiting requests. Wait a minute and try again." },
+  timeout: { status: 504, error: "timeout", message: "Plaid did not answer in time. Start again in a moment." },
+  unavailable: { status: 503, error: "unavailable", message: "Plaid or the bank is temporarily unavailable. Try again later." },
+  missing_entitlement: { status: 422, error: "missing_entitlement", message: "This Plaid account is not enabled for the requested product." },
+  login_required: { status: 409, error: "login_required", message: "The bank needs you to sign in again." },
+  misconfigured: { status: 503, error: "plaid_misconfigured", message: "The Plaid credentials were rejected. Check the server configuration." },
+  invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
+  unknown: { status: 502, error: "provider_error", message: "Plaid returned an unexpected error. Try again later." },
+};
+
+/**
+ * Turn any thrown value into a safe response. Only codes and categories are
+ * logged (never messages from the SDK, never request data), and the browser
+ * only ever receives the fixed text above.
+ */
+export function plaidErrorResponse(error: unknown, route: string): Response {
+  if (error instanceof PlaidNotConfiguredError) {
+    return jsonNoStore(
+      { error: "plaid_not_configured", message: "Plaid is not configured on this server." },
+      503,
+    );
+  }
+
+  if (error instanceof PlaidFlowError) {
+    const provider = error.provider;
+    const mapped = error.code === "provider_error" ? PROVIDER[provider?.kind ?? "unknown"] : FLOW[error.code];
+    console.error(`[plaid] ${route} failed`, {
+      code: error.code,
+      kind: provider?.kind,
+      providerCode: provider?.code,
+      requestId: provider?.requestId,
+    });
+    return jsonNoStore({ error: mapped.error, message: mapped.message }, mapped.status);
+  }
+
+  if (error instanceof PlaidProviderError) {
+    const mapped = PROVIDER[error.kind];
+    console.error(`[plaid] ${route} failed`, { kind: error.kind, providerCode: error.code, requestId: error.requestId });
+    return jsonNoStore({ error: mapped.error, message: mapped.message }, mapped.status);
+  }
+
+  console.error(`[plaid] ${route} failed unexpectedly`, { name: error instanceof Error ? error.name : typeof error });
+  return jsonNoStore({ error: "internal_error", message: "Something went wrong." }, 500);
+}

@@ -8,7 +8,8 @@ Design and scope live in [docs/home-finances-spec.md](docs/home-finances-spec.md
 the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-implementation-plan.md).
 This repository currently covers **Task 1 (containerized dev environment)**,
 **Task 2 (database schema and encrypted token storage)** and **Task 3 (closed
-household authentication)**.
+household authentication)** and **Task 4 (connecting a Plaid Sandbox bank and
+viewing balances)**.
 Nothing here deploys anything or contacts a bank.
 
 ## Prerequisites
@@ -29,7 +30,7 @@ docker compose exec app npm run auth:bootstrap
 characters) and creates the household and its first member. Registration through
 the website is closed; this command is the only way accounts are created.
 
-Then open <http://localhost:3000> and sign in. The app is published on `127.0.0.1` only.
+Then open <http://localhost:3000> and sign in. The port is published on the loopback interface only. Always browse to `localhost`, not `127.0.0.1`: `APP_URL` is `http://localhost:3000`, the sign-in Origin check compares against it exactly, and the Next.js dev server blocks hot-reload (HMR) for other hostnames.
 (`db:migrate` creates the tables and the restricted database role. It is safe to
 re-run and is only needed on first setup and after pulling new migrations.)
 Drop the `-d` to watch the logs in the foreground instead.
@@ -113,7 +114,7 @@ In a host-run `.env`, use `127.0.0.1:5433` in place of `db:5432` in `DATABASE_UR
 
 - **Next.js 16.4.3, React 19.3, Node 24 LTS, PostgreSQL 17.** Versions are pinned by `package-lock.json` and the Dockerfile.
 - **Cache Components enabled** (the Next.js 16 scaffold default). Pages are dynamic unless a component or function opts into caching with `use cache`. `GET /api/health` calls `connection()` so it is evaluated per request instead of being frozen at build time. Household data must never be cached in shared caches.
-- **Config is validated at runtime** by `src/lib/config.ts`. Error messages name the variable, never its value. Plaid credentials are optional for now (a half-set pair is an error) and become required in Task 4.
+- **Config is validated at runtime** by `src/lib/config.ts`. Error messages name the variable, never its value. Plaid credentials are optional for now (a half-set pair is an error); the connections page shows a notice and hides the Connect button until they are set.
 - **Plaid environments** are `sandbox` and `production` only. There is no legacy `development` option.
 - **zod** validates configuration; **Vitest** runs tests.
 
@@ -155,6 +156,18 @@ Highlights:
 - Sign-in is limited to 5 attempts a minute, shared by all callers (the app does not trust `X-Forwarded-For`).
 - `APP_URL` must match the address you browse to, because the Origin check compares against it.
 
+## Choices made in Task 4
+
+The Plaid flow, what is stored, the protections and the recovery steps are in
+[docs/plaid-link.md](docs/plaid-link.md). Highlights:
+
+- **plaid 49.0.0** (official Node SDK) and **react-plaid-link 5.0.0**, both pinned. All SDK access is in `src/features/plaid/client.ts`, which reduces SDK errors (they embed the request, including secrets) to a category plus Plaid's error code and request id.
+- Link is requested for **Transactions only, 90 days**. Balances come from `/accounts/get` and are shown with the time they were observed. Nothing calls Plaid when a page is viewed; fetching is an explicit click.
+- A public token is exchanged **once**: the attempt is claimed atomically, and any uncertain outcome becomes `NEEDS_RECONCILIATION` instead of a retry.
+- `PLAID_REDIRECT_URI` is **not used yet** (OAuth banks, Task 5). Leave it blank.
+- Browser tests never contact Plaid. The real Link flow is a manual Sandbox check; see the end of docs/plaid-link.md.
+- Dev dependency refresh: after pulling this change, rebuild the dependency volume (see "Where things live") and run `docker compose exec app npm run db:migrate`.
+
 ## Layout
 
 ```text
@@ -170,6 +183,8 @@ src/app/                            App Router pages and route handlers
 src/lib/config.ts                   validated server configuration (server-only)
 src/lib/db.ts                       Prisma client factory and per-process singleton
 src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
+src/features/plaid/                  Plaid gateway (SDK), link flow, account refresh, formatting
+src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
 src/lib/data/                       household-scoped data access helpers
 src/proxy.ts                        optimistic redirect for visitors with no session cookie
@@ -181,6 +196,6 @@ tests/                              Vitest unit tests; *.integration.test.ts use
 
 ## Not yet covered
 
-Plaid linking, sync, backups and future deployment prerequisites
-arrive in Tasks 4–7 of the plan. Do not deploy this app or point it at real bank
+Reconnect/disconnect and OAuth (Task 5), transaction sync (Task 6), backups and
+future deployment prerequisites (Task 7) are still to come. Do not deploy this app or point it at real bank
 accounts until then.

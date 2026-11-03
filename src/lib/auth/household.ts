@@ -17,7 +17,12 @@ import { checkMutationOrigin } from "./origin";
  * guard such as proxy.ts is only an optimisation on top of this.
  */
 
-export type HouseholdContext = { userId: string; householdId: string };
+export type HouseholdContext = {
+  userId: string;
+  householdId: string;
+  /** The browser session making this request; used to bind one-time flows (Plaid Link) to it. */
+  sessionId: string;
+};
 
 export class UnauthorizedError extends Error {
   constructor() {
@@ -44,7 +49,7 @@ export async function resolveHousehold(
   });
   if (!membership) return null;
 
-  return { userId: session.user.id, householdId: membership.householdId };
+  return { userId: session.user.id, householdId: membership.householdId, sessionId: session.session.id };
 }
 
 /** For server code serving the current request. Throws if not signed in. */

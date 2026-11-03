@@ -147,7 +147,8 @@ enum PlaidEnvironment {
 }
 
 enum ItemStatus {
-  // Created locally; provider exchange not yet confirmed.
+  // Token exchanged and stored, but accounts not yet fetched successfully.
+  // Safe to retry the account fetch; never the public-token exchange.
   PENDING
   ACTIVE
   // Provider needs the user to re-authenticate (update mode).
@@ -270,6 +271,9 @@ model Transaction {
 
 enum LinkAttemptStatus {
   PENDING
+  // Claimed by one exchange request. A public token can be exchanged once, so
+  // claiming is an atomic PENDING -> EXCHANGING update; a second request loses.
+  EXCHANGING
   COMPLETED
   FAILED
   // Provider exchange succeeded but local persistence is uncertain; needs
@@ -278,19 +282,26 @@ enum LinkAttemptStatus {
 }
 
 model LinkAttempt {
-  id          String            @id @default(uuid()) @db.Uuid
-  householdId String            @db.Uuid
+  id                   String            @id @default(uuid()) @db.Uuid
+  householdId          String            @db.Uuid
   // Bound to the browser session that started it. Set null (not deleted) if
   // that session goes away, so an unfinished attempt can still be reconciled.
-  sessionId   String?           @db.Uuid
-  environment PlaidEnvironment
-  status      LinkAttemptStatus @default(PENDING)
+  sessionId            String?           @db.Uuid
+  environment          PlaidEnvironment
+  status               LinkAttemptStatus @default(PENDING)
   // Set for update-mode attempts (reconnecting an existing Item) and once an
   // exchange creates an Item.
-  plaidItemId String?           @db.Uuid
-  expiresAt   DateTime
-  completedAt DateTime?
-  createdAt   DateTime          @default(now())
+  plaidItemId          String?           @db.Uuid
+  expiresAt            DateTime
+  completedAt          DateTime?
+  createdAt            DateTime          @default(now())
+  // Days of transaction history requested when the link token was created.
+  requestedHistoryDays Int?
+  // Plaid's own id for the Item, recorded as soon as the exchange succeeds so
+  // an exchange whose local save failed can be reconciled or cleaned up.
+  providerItemId       String?
+  // Safe, app-defined failure code only; never provider payloads.
+  errorCode            String?
 
   household Household  @relation(fields: [householdId], references: [id], onDelete: Restrict)
   session   Session?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)

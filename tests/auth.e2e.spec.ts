@@ -102,3 +102,31 @@ test("repeated failures are throttled", async ({ page }) => {
   await expect(page.locator("form").getByRole("alert")).toContainText("Too many sign-in attempts");
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test.describe("before the page's JavaScript has loaded", () => {
+  // A form submitted before hydration (slow dev server, blocked script) falls
+  // back to the browser's native behaviour. That must never put credentials in
+  // the URL, where they would reach history, logs and Referer headers.
+  test.use({ javaScriptEnabled: false });
+
+  test("submitting the login form never puts credentials in the URL", async ({ page }) => {
+    const requestedUrls: string[] = [];
+    page.on("request", (request) => requestedUrls.push(request.url()));
+
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email());
+    await page.getByLabel("Password").fill(password());
+    await Promise.all([
+      page.waitForEvent("framenavigated"),
+      page.locator("form").evaluate((form: HTMLFormElement) => form.requestSubmit()),
+    ]);
+    await page.waitForLoadState("load");
+
+    const leaked = [page.url(), ...requestedUrls].filter(
+      (url) => url.includes(encodeURIComponent(password())) || url.includes("password="),
+    );
+    expect(leaked).toEqual([]);
+    expect(await page.locator("form").getAttribute("method")).toBe("post");
+    await expect(page.getByRole("button", { name: /sign in/i })).toBeDisabled();
+  });
+});

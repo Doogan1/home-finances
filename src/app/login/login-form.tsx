@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { authClient } from "@/lib/auth/client";
 
 // Deliberately vague: the same text for a wrong password and an unknown email,
@@ -9,8 +9,16 @@ import { authClient } from "@/lib/auth/client";
 const GENERIC_FAILURE = "That email and password did not work.";
 const THROTTLED = "Too many sign-in attempts. Wait a minute and try again.";
 
+// False while the server renders and during hydration, true once this component
+// is running in the browser. Used to keep the form inert until onSubmit exists.
+const subscribeToNothing = () => () => {};
+function useHydrated(): boolean {
+  return useSyncExternalStore(subscribeToNothing, () => true, () => false);
+}
+
 export function LoginForm() {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -36,7 +44,11 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="form">
+    // method="post" is a safety net: if the form is ever submitted natively
+    // (script not loaded, blocked or failed), the browser must not fall back to
+    // GET, which would put the email and password in the URL, history and logs.
+    // The button is also disabled until hydration so that normally cannot happen.
+    <form onSubmit={onSubmit} method="post" className="form">
       <label>
         Email
         <input name="email" type="email" autoComplete="username" required />
@@ -50,7 +62,7 @@ export function LoginForm() {
           {error}
         </p>
       )}
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending || !hydrated}>
         {pending ? "Signing in…" : "Sign in"}
       </button>
     </form>

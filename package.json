@@ -7,14 +7,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.mts --passWithNoTests",
+    "test:integration": "prisma generate && vitest run --config vitest.integration.config.mts --passWithNoTests",
     "test:e2e": "node -e \"console.error('No browser tests yet: Playwright is added with authentication in Task 3.'); process.exit(1)\"",
-    "setup:env": "node scripts/setup-env.mjs"
+    "setup:env": "node scripts/setup-env.mjs",
+    "prebuild": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "tsx scripts/migrate.mts",
+    "db:migrate:dev": "prisma migrate dev"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "next": "16.4.3",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
@@ -22,10 +29,13 @@
   },
   "devDependencies": {
     "@types/node": "^24",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "prisma": "7.10.1",
+    "tsx": "4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
   }

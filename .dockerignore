@@ -13,3 +13,4 @@ backups
 *.sql.gz
 npm-debug.log*
 docs
+src/generated

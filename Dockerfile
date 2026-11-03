@@ -10,6 +10,11 @@ ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
+# Prisma's schema engine needs OpenSSL, which the slim image does not include.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 # The official node image ships a non-root `node` user (uid 1000). Hand it the
 # working directory so everything below can run unprivileged.
 RUN chown node:node /app

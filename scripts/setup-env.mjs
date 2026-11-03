@@ -27,11 +27,18 @@ const values = new Map(
     }),
 );
 
-const dbPassword = randomBytes(24).toString("hex");
-values.set("POSTGRES_PASSWORD", dbPassword);
+const ownerPassword = randomBytes(24).toString("hex");
+const appPassword = randomBytes(24).toString("hex");
+const dbName = values.get("POSTGRES_DB");
+values.set("POSTGRES_PASSWORD", ownerPassword);
+values.set("APP_DB_PASSWORD", appPassword);
+values.set(
+  "MIGRATION_DATABASE_URL",
+  `postgresql://${values.get("POSTGRES_USER")}:${ownerPassword}@db:5432/${dbName}`,
+);
 values.set(
   "DATABASE_URL",
-  `postgresql://${values.get("POSTGRES_USER")}:${dbPassword}@db:5432/${values.get("POSTGRES_DB")}`,
+  `postgresql://${values.get("APP_DB_USER")}:${appPassword}@db:5432/${dbName}`,
 );
 values.set("AUTH_SECRET", randomBytes(48).toString("hex"));
 values.set("TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));

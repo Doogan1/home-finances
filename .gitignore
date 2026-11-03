@@ -47,3 +47,6 @@ next-env.d.ts
 /backups/
 *.dump
 *.sql.gz
+
+# generated Prisma client (run `npm run db:generate`)
+/src/generated/

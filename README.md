@@ -6,7 +6,8 @@ TypeScript, PostgreSQL, Prisma and the Plaid Node SDK.
 
 Design and scope live in [docs/home-finances-spec.md](docs/home-finances-spec.md);
 the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-implementation-plan.md).
-This repository currently covers **Task 1: the containerized dev environment**.
+This repository currently covers **Task 1 (containerized dev environment)** and
+**Task 2 (database schema and encrypted token storage)**.
 Nothing here deploys anything or contacts a bank.
 
 ## Prerequisites
@@ -18,10 +19,14 @@ Nothing here deploys anything or contacts a bank.
 
 ```bash
 npm run setup:env
-docker compose up --build
+docker compose up --build -d
+docker compose exec app npm run db:migrate
 ```
 
 Then open <http://localhost:3000>. The app is published on `127.0.0.1` only.
+(`db:migrate` creates the tables and the restricted database role. It is safe to
+re-run and is only needed on first setup and after pulling new migrations.)
+Drop the `-d` to watch the logs in the foreground instead.
 
 `npm run setup:env` copies `.env.example` to `.env` and fills in fresh random
 secrets. It refuses to overwrite an existing `.env`. **Back up
@@ -39,8 +44,10 @@ Run these inside the app container so they use the Linux toolchain:
 docker compose exec app npm run lint
 docker compose exec app npm run typecheck
 docker compose exec app npm test
-docker compose exec app npm run test:integration   # no tests yet (Task 2)
+docker compose exec app npm run test:integration   # needs the db service; uses a throwaway database
 docker compose exec app npm run build
+docker compose exec app npm run db:migrate         # apply migrations + refresh app-role grants
+docker compose exec app npm run db:migrate:dev -- --name describe_the_change   # create a NEW migration
 docker compose logs -f app
 ```
 
@@ -96,19 +103,50 @@ In a host-run `.env`, use `127.0.0.1:5433` in place of `db:5432` in `DATABASE_UR
 - **Plaid environments** are `sandbox` and `production` only. There is no legacy `development` option.
 - **zod** validates configuration; **Vitest** runs tests.
 
+## Choices made in Task 2
+
+- **Prisma 7.10.1**, with `@prisma/adapter-pg`, all pinned exactly. The `prisma` CLI's npm `latest` tag currently points at an 8.0 release candidate, so the CLI is pinned to the stable 7.10.1 to match `@prisma/client`; ignore the "update available" banner until 8.x is stable. The generated client lives in `src/generated/prisma` (git-ignored; `npm run db:generate` rebuilds it, and `build`, `typecheck` and `test:integration` do so automatically).
+- **Migrations are explicit.** Nothing migrates on app startup. Create a migration with `db:migrate:dev`, commit the folder under `prisma/migrations/`, and apply committed migrations with `db:migrate`. `prisma migrate reset` is never needed for routine work and deletes data.
+- **Two database roles.**
+  - `POSTGRES_USER` (the *owner*) runs migrations. In the official image it is a PostgreSQL superuser, so the running app does not use it.
+  - `APP_DB_USER` (`home_finances_app`) is what `DATABASE_URL` connects as: read/write rows only. It cannot create or alter tables, create databases or roles, truncate, or read migration history (all covered by integration tests). `db:migrate` creates it and re-applies its grants after every migration.
+  - Dev concession: the dev container receives *both* URLs (via `env_file`) so it can run migrations. Application code only ever reads `DATABASE_URL`. A production setup would run migrations from a separate job holding the owner credential and give the app container only `DATABASE_URL`.
+- **Money and nulls.** Amounts are `Decimal(19,4)`; nullable balances mean "not reported", never zero. A transaction's account must belong to the same Item (composite foreign key), so cross-connection rows are rejected by the database itself.
+- **Sessions table is provisional.** It stores only a hash of a session token. Task 3 picks the auth library and may adjust it in a later migration.
+- **Integration tests never touch your data.** Each run creates a uniquely named `hf_test_*` database, applies the committed migrations, and drops it afterwards. They must run inside the app container (`MIGRATION_DATABASE_URL` points at the `db` service).
+- **Standalone scripts are `.mts`** (ESM) because the project is CommonJS by default; `tsx` cannot use top-level `await` in a plain `.ts` file there.
+
+### Token encryption and the encryption key
+
+Plaid access tokens are encrypted before storage with AES-256-GCM (`src/lib/crypto/tokens.ts`). Stored values look like `v1.<keyId>.<nonce>.<ciphertext>.<tag>`. The Item's environment and Plaid Item ID are bound in as authenticated context, so a token copied to another row, or a sandbox token presented as a production one, fails to decrypt. Other code must call `encryptToken` / `decryptToken` and never use crypto primitives directly.
+
+- **Back up `TOKEN_ENCRYPTION_KEY`** (from `.env`) separately from database dumps, in restricted storage. Without it stored tokens are unrecoverable, and with it plus a dump they are readable.
+- **Rotation** is supported by the cipher (a new key encrypts; retired keys still decrypt old data) but not yet wired into configuration or tooling. Until a re-encryption script exists, changing `TOKEN_ENCRYPTION_KEY` makes existing stored tokens undecryptable, and the fix would be to relink the affected connections. This will be completed with the backup/restore work in Task 7.
+
+### Existing `.env` from Task 1
+
+`npm run setup:env` refuses to overwrite `.env`. If yours predates Task 2 it lacks `APP_DB_USER`, `APP_DB_PASSWORD` and `MIGRATION_DATABASE_URL`. Add them (compare with `.env.example`: `MIGRATION_DATABASE_URL` is your old `DATABASE_URL`, and the new `DATABASE_URL` uses the app role), then `docker compose up -d app` to reload them and `docker compose exec app npm run db:migrate`.
+
 ## Layout
 
 ```text
 compose.yaml / compose.debug.yaml   local services (debug override is opt-in)
 Dockerfile                          dev and production targets
+prisma/schema.prisma                data model (see the comments in the file)
+prisma/migrations/                  committed, versioned schema changes
+prisma.config.ts                    Prisma CLI configuration
 scripts/setup-env.mjs               generates .env with random local secrets
+scripts/migrate.mts                 `npm run db:migrate`
+scripts/lib/database.mts            migration runner and app-role setup (also used by tests)
 src/app/                            App Router pages and route handlers
 src/lib/config.ts                   validated server configuration (server-only)
-tests/                              Vitest tests
+src/lib/db.ts                       Prisma client factory and per-process singleton
+src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
+tests/                              Vitest unit tests; *.integration.test.ts use a real database
 ```
 
 ## Not yet covered
 
-Database schema, token encryption, authentication, Plaid, sync, backups and
-future deployment prerequisites arrive in Tasks 2–7 of the plan. Do not deploy
-this app or point it at real bank accounts until then.
+Authentication, Plaid linking, sync, backups and future deployment prerequisites
+arrive in Tasks 3–7 of the plan. Do not deploy this app or point it at real bank
+accounts until then.

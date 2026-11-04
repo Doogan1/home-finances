@@ -60,7 +60,11 @@ async function Accounts() {
           <li key={account.id} className="card">
             <h2>
               {account.name} <span className="muted">{maskAccount(account.mask)}</span>
-              {!account.active && <span className="chip chip-muted">Not reported by bank</span>}
+              {!account.active && (
+                <span className="chip chip-muted">
+                  {account.plaidItem.status === "DISCONNECTED" ? "Disconnected · history kept" : "Not reported by bank"}
+                </span>
+              )}
             </h2>
             <p className="muted">
               {account.plaidItem.institutionName ?? "Bank"} · {account.subtype ?? account.type}
@@ -89,7 +93,11 @@ async function Accounts() {
                   {describeAge(balance.observedAt, now)})
                   {stale && <span className="chip chip-warn">May be out of date</span>}
                   {account.unavailableSince && (
-                    <> · bank stopped reporting this account {formatTimestamp(account.unavailableSince)}</>
+                    <>
+                      {" "}
+                      · {account.plaidItem.status === "DISCONNECTED" ? "disconnected" : "bank stopped reporting this account"}{" "}
+                      {formatTimestamp(account.unavailableSince)}
+                    </>
                   )}
                 </p>
               </>

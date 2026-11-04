@@ -102,4 +102,42 @@ describe("getServerConfig", () => {
 
     expect(() => getServerConfig(env)).toThrow(/PLAID_SECRET/);
   });
+
+  describe("PLAID_REDIRECT_URI", () => {
+    const withUri = (uri: string, plaidEnv = "sandbox") => ({ ...validEnv, PLAID_ENV: plaidEnv, PLAID_REDIRECT_URI: uri });
+
+    it("is optional and null when unset or blank", () => {
+      expect(getServerConfig(validEnv).plaidRedirectUri).toBeNull();
+      expect(getServerConfig({ ...validEnv, PLAID_REDIRECT_URI: "" }).plaidRedirectUri).toBeNull();
+    });
+
+    it.each([
+      ["https://finance.example.test/plaid/oauth", "sandbox"],
+      ["https://finance.example.test/plaid/oauth", "production"],
+      ["http://localhost:3000/plaid/oauth", "sandbox"],
+      ["http://127.0.0.1:3000/plaid/oauth", "sandbox"],
+    ])("accepts %s in %s", (uri, plaidEnv) => {
+      expect(getServerConfig(withUri(uri, plaidEnv)).plaidRedirectUri).toBe(uri);
+    });
+
+    it.each([
+      ["plain http on a real host", "http://finance.example.test/plaid/oauth", "sandbox"],
+      ["http localhost in production", "http://localhost:3000/plaid/oauth", "production"],
+      ["a query string", "https://finance.example.test/plaid/oauth?x=1", "sandbox"],
+      ["a fragment", "https://finance.example.test/plaid/oauth#top", "sandbox"],
+      ["embedded credentials", "https://user:pw@finance.example.test/plaid/oauth", "sandbox"],
+      ["a custom scheme", "myapp://oauth", "sandbox"],
+      ["not a URL", "not a url", "sandbox"],
+    ])("rejects %s without echoing it", (_name, uri, plaidEnv) => {
+      let message = "";
+      try {
+        getServerConfig(withUri(uri, plaidEnv));
+      } catch (error) {
+        message = String((error as Error).message);
+      }
+
+      expect(message).toContain("PLAID_REDIRECT_URI");
+      expect(message).not.toContain(uri);
+    });
+  });
 });

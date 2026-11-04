@@ -269,6 +269,14 @@ model Transaction {
 // Link flow and sync bookkeeping
 // ---------------------------------------------------------------------------
 
+enum LinkAttemptKind {
+  // Connecting a new bank: the public token is exchanged for an access token.
+  CONNECT
+  // Update mode for an existing Item: the access token does not change, so no
+  // exchange happens; completing it just re-checks the connection.
+  RECONNECT
+}
+
 enum LinkAttemptStatus {
   PENDING
   // Claimed by one exchange request. A public token can be exchanged once, so
@@ -283,6 +291,7 @@ enum LinkAttemptStatus {
 
 model LinkAttempt {
   id                   String            @id @default(uuid()) @db.Uuid
+  kind                 LinkAttemptKind   @default(CONNECT)
   householdId          String            @db.Uuid
   // Bound to the browser session that started it. Set null (not deleted) if
   // that session goes away, so an unfinished attempt can still be reconciled.
@@ -300,6 +309,10 @@ model LinkAttempt {
   // Plaid's own id for the Item, recorded as soon as the exchange succeeds so
   // an exchange whose local save failed can be reconciled or cleaned up.
   providerItemId       String?
+  // The Plaid link token, encrypted, kept only so an OAuth bank's redirect page
+  // can reopen Link with the SAME token. Cleared the moment the attempt ends
+  // (completed, failed or expired).
+  linkTokenCiphertext  String?
   // Safe, app-defined failure code only; never provider payloads.
   errorCode            String?
 

@@ -77,6 +77,7 @@ const LOGIN_REQUIRED_CODES = new Set([
   "USER_PERMISSION_REVOKED",
 ]);
 const ENTITLEMENT_CODES = new Set(["INVALID_PRODUCT", "PRODUCT_NOT_ENABLED", "PRODUCTS_NOT_SUPPORTED"]);
+const ITEM_GONE_CODES = new Set(["ITEM_NOT_FOUND", "INVALID_ACCESS_TOKEN"]);
 const MISCONFIGURED_CODES = new Set([
   "INVALID_API_KEYS",
   "INVALID_CLIENT_ID",
@@ -99,6 +100,7 @@ export function toProviderError(error: unknown): PlaidProviderError {
   if (code && LOGIN_REQUIRED_CODES.has(code)) kind = "login_required";
   else if (code === "INVALID_PUBLIC_TOKEN") kind = "invalid_public_token";
   else if (code && ENTITLEMENT_CODES.has(code)) kind = "missing_entitlement";
+  else if (code && ITEM_GONE_CODES.has(code)) kind = "item_gone";
   else if (code && MISCONFIGURED_CODES.has(code)) kind = "misconfigured";
   else if (type === "RATE_LIMIT_EXCEEDED" || status === 429) kind = "rate_limited";
   else if (type === "INSTITUTION_ERROR" || code === "INTERNAL_SERVER_ERROR" || (status !== null && status >= 500)) {
@@ -132,16 +134,24 @@ function toDecimalString(value: number | null | undefined): string | null {
 
 export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
   return {
-    async createLinkToken({ clientUserId, historyDays }) {
+    async createLinkToken({ clientUserId, historyDays, redirectUri, accessToken }) {
       const data = await call(() =>
         api.linkTokenCreate({
           client_name: "Home Finances",
           language: "en",
           country_codes: [CountryCode.Us],
           user: { client_user_id: clientUserId },
-          // Transactions only. Auth is not added just to read balances.
-          products: [Products.Transactions],
-          transactions: { days_requested: historyDays },
+          // Only sent when OAuth is configured: Plaid rejects a URI that is not
+          // on the dashboard allowlist.
+          ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+          ...(accessToken
+            ? // Update mode: the Item already has its products and history.
+              { access_token: accessToken }
+            : {
+                // Transactions only. Auth is not added just to read balances.
+                products: [Products.Transactions],
+                transactions: { days_requested: historyDays },
+              }),
         }),
       );
       return {

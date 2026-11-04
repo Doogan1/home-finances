@@ -42,7 +42,17 @@ export type ProviderAccounts = {
  * wraps the official SDK (client.ts); tests substitute a fake SDK underneath it.
  */
 export interface PlaidGateway {
-  createLinkToken(input: { clientUserId: string; historyDays: number }): Promise<{
+  /**
+   * `accessToken` switches to update mode (reconnecting an existing Item): no
+   * products or history are requested because the Item already has them.
+   * `redirectUri` is sent only when OAuth redirects are configured.
+   */
+  createLinkToken(input: {
+    clientUserId: string;
+    historyDays: number;
+    redirectUri?: string;
+    accessToken?: string;
+  }): Promise<{
     linkToken: string;
     expiration: Date | null;
   }>;
@@ -63,6 +73,8 @@ export type PlaidErrorKind =
   | "timeout"
   | "unavailable"
   | "misconfigured"
+  /** Plaid no longer knows this Item or token (e.g. it was already removed). */
+  | "item_gone"
   | "unknown";
 
 /**
@@ -103,6 +115,7 @@ export type PlaidFlowErrorCode =
   | "invalid_public_token"
   | "duplicate_item"
   | "persistence_failed"
+  | "not_disconnected"
   | "token_unreadable"
   | "provider_error";
 
@@ -134,6 +147,8 @@ export type LinkDeps = {
   plaid: PlaidGateway;
   environment: PlaidEnvironment;
   tokens: TokenVault;
+  /** Registered OAuth redirect URI; when set, link tokens carry it and are kept (encrypted) for the return page. */
+  redirectUri?: string | null;
   now?: () => Date;
 };
 
@@ -145,6 +160,12 @@ export type LinkAttemptStart = { attemptId: string; linkToken: string };
 
 /** Deliberately minimal: no token, no cursor, no provider ids. */
 export type ExchangeResult = { connectionId: string; status: ItemStatus };
+
+export type DisconnectResult = {
+  status: "DISCONNECTED";
+  /** False when Plaid could not confirm the removal; the person should check the Plaid Dashboard. */
+  removalConfirmed: boolean;
+};
 
 /** `errorCode` is a safe provider/app code when the fetch failed, otherwise null. */
 export type RefreshResult = { status: ItemStatus; accountCount: number; errorCode: string | null };

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { PlaidLinkButton } from "@/components/plaid-link";
-import { RefreshConnectionButton } from "@/components/refresh-connection-button";
+import { ConnectionActions } from "@/components/connection-actions";
 import { getPlaidEnvironment, isPlaidConfigured } from "@/features/plaid/environment";
 import { describeConnection, formatTimestamp } from "@/features/plaid/format";
 import { listConnections } from "@/features/plaid/queries";
@@ -29,6 +29,7 @@ async function Connections() {
   const { householdId } = await requireHouseholdOrRedirect();
   const environment = getPlaidEnvironment();
   const connections = await listConnections(getDb(), householdId, environment);
+  const plaidConfigured = isPlaidConfigured();
 
   return (
     <>
@@ -36,7 +37,7 @@ async function Connections() {
         Environment: <strong>{environment === "SANDBOX" ? "Plaid Sandbox (test data, no real bank)" : "Production"}</strong>
       </p>
 
-      {isPlaidConfigured() ? (
+      {plaidConfigured ? (
         <PlaidLinkButton />
       ) : (
         <p className="notice notice-warn">
@@ -51,7 +52,9 @@ async function Connections() {
         <ul className="cards">
           {connections.map((connection) => {
             const view = describeConnection(connection.status, connection.lastErrorCode);
-            const canRefresh = connection.status === "PENDING" || connection.status === "ACTIVE" || connection.status === "ERROR";
+            const activeAccounts = connection.accounts.filter((account) => account.active).length;
+            const savedAccounts = connection.accounts.length;
+            const disconnected = connection.status === "DISCONNECTED";
             return (
               <li key={connection.id} className="card">
                 <h2>
@@ -59,19 +62,24 @@ async function Connections() {
                   <span className={`chip chip-${view.tone}`}>{view.label}</span>
                 </h2>
                 <p className="muted">
-                  Connected {formatTimestamp(connection.createdAt)} · {connection._count.accounts}{" "}
-                  {connection._count.accounts === 1 ? "account" : "accounts"}
+                  Connected {formatTimestamp(connection.createdAt)} ·{" "}
+                  {disconnected
+                    ? `${savedAccounts} saved ${savedAccounts === 1 ? "account" : "accounts"}`
+                    : `${activeAccounts} ${activeAccounts === 1 ? "account" : "accounts"}`}
                 </p>
                 {view.advice && <p>{view.advice}</p>}
-                <p>
-                  {connection._count.accounts > 0 && <Link href="/accounts">View accounts</Link>}{" "}
-                  {canRefresh && (
-                    <RefreshConnectionButton
-                      connectionId={connection.id}
-                      label={connection.status === "PENDING" ? "Fetch accounts" : "Refresh accounts"}
-                    />
-                  )}
-                </p>
+                {savedAccounts > 0 && (
+                  <p>
+                    <Link href="/accounts">View accounts</Link>
+                  </p>
+                )}
+                <ConnectionActions
+                  connectionId={connection.id}
+                  status={connection.status}
+                  institutionName={connection.institutionName ?? "this bank"}
+                  savedAccounts={savedAccounts}
+                  plaidConfigured={plaidConfigured}
+                />
               </li>
             );
           })}

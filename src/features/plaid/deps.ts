@@ -1,5 +1,6 @@
 import "server-only";
 import { decryptToken, encryptToken } from "@/lib/crypto/tokens";
+import { getServerConfig } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { getPlaidGateway } from "./client";
 import { getPlaidEnvironment } from "./environment";
@@ -17,6 +18,7 @@ export function getLinkDeps(): LinkDeps {
     db: getDb(),
     plaid: getPlaidGateway(),
     environment: getPlaidEnvironment(),
+    redirectUri: getServerConfig().plaidRedirectUri,
     tokens: { encrypt: encryptToken, decrypt: decryptToken },
   };
 }

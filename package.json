@@ -16,7 +16,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:migrate:dev": "prisma migrate dev",
-    "auth:bootstrap": "tsx scripts/bootstrap-user.mts"
+    "auth:bootstrap": "tsx scripts/bootstrap-user.mts",
+    "plaid:sandbox": "NODE_OPTIONS=--conditions=react-server tsx scripts/plaid-sandbox.mts"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.2",

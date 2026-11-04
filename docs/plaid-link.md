@@ -98,12 +98,119 @@ Closing an attempt once reviewed:
 update "LinkAttempt" set status = 'FAILED', "errorCode" = 'reconciled' where id = '<attempt id>';
 ```
 
+## Reconnecting (Link update mode)
+
+A connection shows **Sign-in needed** when Plaid answers `ITEM_LOGIN_REQUIRED`
+(or the related expiry codes) while accounts are being fetched. Because there are
+no webhooks yet, this is discovered when someone presses **Refresh accounts**.
+
+**Reconnect** opens Link in *update mode* on the same connection: the server
+decrypts the stored access token and asks Plaid for an update-mode link token
+(no products, no history request, since the Item already has them). Per Plaid,
+the access token does **not** change in update mode, so nothing is exchanged: the
+browser still reports Link's success to `/api/plaid/exchange`, but for a
+`RECONNECT` attempt the server ignores the public token, closes the attempt and
+re-fetches accounts. That clears the warning, or restores it if the bank still
+refuses. Reconnect is offered for any connection that still has a token, so
+consent can also be refreshed before it lapses.
+
+Reconnect attempts have the same protections as new ones: bound to household and
+browser session, 30-minute expiry, claimed once, replay-proof.
+
+To try it in Sandbox without waiting for a real expiry:
+
+```bash
+docker compose exec app npm run plaid:sandbox                      # list connection ids
+docker compose exec app npm run plaid:sandbox -- reset-login <id>  # Sandbox-only: make the bank demand a sign-in
+```
+
+then press **Refresh accounts** on that connection (it turns to *Sign-in needed*)
+and **Reconnect**.
+
+## Disconnecting
+
+**Disconnect…** asks for confirmation (it explains what happens), then:
+
+1. calls Plaid's `/item/remove`, which invalidates the access token and, per
+   Plaid, is what ends billing for Transactions;
+2. erases the stored (encrypted) access token, marks the connection
+   **Disconnected**, and marks its accounts as no longer reported.
+
+Saved accounts, balance observations and any transactions are **kept**. They
+remain visible (marked "Disconnected · history kept") until you delete them.
+
+- **If Plaid cannot be reached**, nothing changes locally (the token is kept) so
+  the same button can simply be pressed again. The error code is shown as a plain
+  message on the card.
+- **If Plaid says it no longer knows the Item** (`ITEM_NOT_FOUND` /
+  `INVALID_ACCESS_TOKEN`), or the stored token can no longer be decrypted (for
+  example the encryption key was lost), the connection is disconnected locally
+  but flagged *removal not confirmed*. Plaid's documentation does not say whether
+  `/item/remove` is idempotent, and `INVALID_ACCESS_TOKEN` can also mean the
+  token belongs to a different environment, so the app cannot prove the Item is
+  gone. Check the Plaid Dashboard (Items) so billing stops.
+- Disconnected connections can no longer be refreshed or reconnected. To use the
+  bank again, connect it as a new bank.
+
+## Deleting saved history
+
+A separate step, available only for a **disconnected** connection:
+**Delete saved history…** explains what will be removed (its accounts, every
+balance recorded for them, any transactions), requires typing `DELETE`, and
+cannot be undone. The server re-checks that the connection is disconnected as
+part of the delete itself, and other connections are never touched. Link attempts
+that referred to it are kept (without the link) for the audit trail.
+
+## OAuth banks and `PLAID_REDIRECT_URI`
+
+Some banks send the person to their own website to approve access and then back
+to the app. Plaid Link handles that, but the app must provide a **redirect page**
+and tell Plaid its address.
+
+1. **Choose the address.** For Sandbox on this machine:
+   `http://localhost:3000/plaid/oauth`. Plaid allows plain `http://localhost`
+   **only in Sandbox**; every real deployment needs an `https://` address, with no
+   query string or fragment.
+2. **Register it.** Add exactly that address to *Allowed redirect URIs* in the
+   Plaid Dashboard (Developers → API). Plaid rejects a link token whose
+   `redirect_uri` is not on that list.
+3. **Configure it.** Set `PLAID_REDIRECT_URI` in `.env` and recreate the app
+   container. The app validates the value at startup (https, or localhost in
+   Sandbox; no query or fragment).
+4. With it set, every link token carries the redirect URI.
+
+How the return trip works (`src/components/oauth-resume.tsx`):
+
+- Before Link opens, the browser remembers the attempt's id (just an opaque id)
+  in `sessionStorage`.
+- When the bank returns the person to `/plaid/oauth?oauth_state_id=…`, the page
+  asks `POST /api/plaid/oauth/resume` for the attempt's **original link token**.
+  Plaid requires the same token, so the server keeps it encrypted
+  (`LinkAttempt.linkTokenCiphertext`, bound to the attempt) and returns it only
+  to the browser session that started the attempt, only while the attempt is open.
+  It is erased the moment the attempt completes, fails or expires.
+- The page reopens Link with that token and the full return address as
+  `receivedRedirectUri`, then finishes through the normal exchange route.
+
+Keeping the callback address private: the dev server's request log ignores
+`/plaid/oauth` (`logging.incomingRequests` in `next.config.ts`), the app never
+logs it, and the page is served with `Referrer-Policy: no-referrer` so the
+address is not sent to other sites.
+
+**What has and has not been exercised.** Per Plaid, Sandbox in a desktop browser
+opens Link in a pop-up, so the redirect page is not used; it is used by webviews
+and mobile browsers. The page is covered by automated tests (guards, expiry,
+safe failure) and the server side by integration tests, but a full real redirect
+round trip needs Plaid's *Platypus OAuth Bank* with a simulated webview user
+agent, and real banks need an `https` address. This was not tried against Plaid.
+A public tunnel is never opened by the app or its tools; if a real bank needs
+one, that is a decision for you to make.
+
 ## Not yet covered
 
-Reconnect (update mode), disconnect, OAuth banks and the `PLAID_REDIRECT_URI`
-setting arrive in Task 5; transaction sync in Task 6. There is no automatic
-reconciliation job, no webhook handling, and link-token creation is not rate
-limited beyond Plaid's own limits.
+Transaction sync is Task 6. There is no automatic reconciliation job, no webhook
+handling (so "sign-in needed" is only noticed on an explicit refresh), and
+link-token creation is not rate limited beyond Plaid's own limits.
 
 ## Trying it in Sandbox
 

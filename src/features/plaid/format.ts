@@ -89,10 +89,17 @@ export function describeConnection(status: ItemStatusName, errorCode: string | n
         advice: `${detail ?? "The bank is linked but its accounts have not been fetched."} Use “Fetch accounts” to try again.`,
       };
     case "LOGIN_REQUIRED":
-      return { label: "Sign-in needed", tone: "error", advice: "The bank needs you to sign in again. Reconnecting arrives in a later step." };
+      return { label: "Sign-in needed", tone: "error", advice: "The bank needs you to sign in again. Use “Reconnect”." };
     case "ERROR":
       return { label: "Problem", tone: "error", advice: detail };
     case "DISCONNECTED":
-      return { label: "Disconnected", tone: "muted", advice: "No longer connected; history is kept." };
+      return {
+        label: "Disconnected",
+        tone: "muted",
+        advice:
+          errorCode === "removal_unconfirmed"
+            ? "Disconnected here, but Plaid could not confirm it removed the connection. Check the Plaid Dashboard so billing stops. Saved history is kept until you delete it."
+            : "Disconnected. Saved accounts and balances stay here until you delete them.",
+      };
   }
 }

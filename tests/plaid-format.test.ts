@@ -63,6 +63,17 @@ describe("describeConnection", () => {
     expect(view.tone).toBe("warn");
   });
 
+  it("tells the person how to fix a connection that needs a sign-in", () => {
+    expect(describeConnection("LOGIN_REQUIRED", "ITEM_LOGIN_REQUIRED").advice).toContain("Reconnect");
+  });
+
+  it("explains what disconnecting kept, and warns when removal was not confirmed", () => {
+    expect(describeConnection("DISCONNECTED", null).advice).toContain("stay here until you delete");
+    const unconfirmed = describeConnection("DISCONNECTED", "removal_unconfirmed");
+    expect(unconfirmed.advice).toContain("Plaid Dashboard");
+    expect(unconfirmed.advice).not.toContain("removal_unconfirmed");
+  });
+
   it("explains known failures in plain language", () => {
     expect(describeConnection("PENDING", "timeout").advice).toContain("did not answer in time");
     expect(describeConnection("LOGIN_REQUIRED", "ITEM_LOGIN_REQUIRED").tone).toBe("error");

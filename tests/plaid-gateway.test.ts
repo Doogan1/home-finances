@@ -42,6 +42,29 @@ describe("createLinkToken", () => {
   });
 });
 
+describe("createLinkToken options", () => {
+  it("adds the redirect URI only when one is given", async () => {
+    const { api, gateway } = gatewayWith();
+
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, redirectUri: "http://localhost:3000/plaid/oauth" });
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90 });
+
+    expect(api.linkTokenCreate.mock.calls[0][0]).toMatchObject({ redirect_uri: "http://localhost:3000/plaid/oauth" });
+    expect(api.linkTokenCreate.mock.calls[1][0]).not.toHaveProperty("redirect_uri");
+  });
+
+  it("creates an update-mode token from an access token, with no products or history request", async () => {
+    const { api, gateway } = gatewayWith();
+
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, accessToken: ACCESS_TOKEN });
+
+    const request = api.linkTokenCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(request).toMatchObject({ access_token: ACCESS_TOKEN, user: { client_user_id: "h" } });
+    expect(request).not.toHaveProperty("products");
+    expect(request).not.toHaveProperty("transactions");
+  });
+});
+
 describe("exchangePublicToken", () => {
   it("returns the access token and Plaid's item id", async () => {
     const { gateway } = gatewayWith();
@@ -123,6 +146,8 @@ describe("error mapping", () => {
     ["institution down", sdkError(400, { error_type: "INSTITUTION_ERROR", error_code: "INSTITUTION_DOWN" }), "unavailable", "INSTITUTION_DOWN"],
     ["server error", sdkError(500, { error_type: "API_ERROR", error_code: "INTERNAL_SERVER_ERROR" }), "unavailable", "INTERNAL_SERVER_ERROR"],
     ["bad credentials", sdkError(400, { error_type: "INVALID_INPUT", error_code: "INVALID_API_KEYS" }), "misconfigured", "INVALID_API_KEYS"],
+    ["item already removed", sdkError(400, { error_type: "ITEM_ERROR", error_code: "ITEM_NOT_FOUND" }), "item_gone", "ITEM_NOT_FOUND"],
+    ["access token no longer valid", sdkError(400, { error_type: "INVALID_INPUT", error_code: "INVALID_ACCESS_TOKEN" }), "item_gone", "INVALID_ACCESS_TOKEN"],
     ["client timeout", networkError("ECONNABORTED"), "timeout", null],
     ["connection reset", networkError("ECONNRESET"), "timeout", null],
     ["unrecognised", sdkError(400, { error_type: "SOMETHING_NEW", error_code: "NEW_THING" }), "unknown", "NEW_THING"],

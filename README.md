@@ -8,8 +8,8 @@ Design and scope live in [docs/home-finances-spec.md](docs/home-finances-spec.md
 the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-implementation-plan.md).
 This repository currently covers **Task 1 (containerized dev environment)**,
 **Task 2 (database schema and encrypted token storage)** and **Task 3 (closed
-household authentication)** and **Task 4 (connecting a Plaid Sandbox bank and
-viewing balances)**.
+household authentication)** , **Task 4 (connecting a Plaid Sandbox bank and
+viewing balances)** and **Task 5 (reconnect, disconnect, OAuth support)**.
 Nothing here deploys anything or contacts a bank.
 
 ## Prerequisites
@@ -164,9 +164,18 @@ The Plaid flow, what is stored, the protections and the recovery steps are in
 - **plaid 49.0.0** (official Node SDK) and **react-plaid-link 5.0.0**, both pinned. All SDK access is in `src/features/plaid/client.ts`, which reduces SDK errors (they embed the request, including secrets) to a category plus Plaid's error code and request id.
 - Link is requested for **Transactions only, 90 days**. Balances come from `/accounts/get` and are shown with the time they were observed. Nothing calls Plaid when a page is viewed; fetching is an explicit click.
 - A public token is exchanged **once**: the attempt is claimed atomically, and any uncertain outcome becomes `NEEDS_RECONCILIATION` instead of a retry.
-- `PLAID_REDIRECT_URI` is **not used yet** (OAuth banks, Task 5). Leave it blank.
 - Browser tests never contact Plaid. The real Link flow is a manual Sandbox check; see the end of docs/plaid-link.md.
 - Dev dependency refresh: after pulling this change, rebuild the dependency volume (see "Where things live") and run `docker compose exec app npm run db:migrate`.
+
+## Choices made in Task 5
+
+Details and recovery steps are in [docs/plaid-link.md](docs/plaid-link.md).
+
+- **Reconnect** uses Plaid's update mode on the existing connection (no token exchange, since the access token does not change). **Disconnect** calls `/item/remove`, erases the stored token and keeps your saved history; **Delete saved history** is a separate typed confirmation, allowed only for a disconnected bank.
+- If Plaid cannot confirm a removal (it no longer knows the Item, or the stored key was lost), the bank is disconnected here but flagged so you check the Plaid Dashboard; a network failure leaves everything unchanged so you can retry.
+- **OAuth support** is built (redirect page `/plaid/oauth`, original link token kept encrypted until the attempt ends). `PLAID_REDIRECT_URI` stays blank unless you want it: it must be registered in the Plaid Dashboard and be https, except `http://localhost` in Sandbox. A real round trip through a bank was **not** tried (Sandbox desktop browsers use a pop-up instead); see the end of docs/plaid-link.md.
+- `npm run plaid:sandbox` is a Sandbox-only helper to force "sign-in needed" for trying Reconnect.
+- After pulling this change run `docker compose exec app npm run db:migrate`.
 
 ## Layout
 
@@ -190,12 +199,13 @@ src/lib/data/                       household-scoped data access helpers
 src/proxy.ts                        optimistic redirect for visitors with no session cookie
 src/app/login/, src/app/api/auth/   login page and the Better Auth route handler
 scripts/bootstrap-user.mts          `npm run auth:bootstrap` (hidden password prompt)
+scripts/plaid-sandbox.mts           `npm run plaid:sandbox` (Sandbox-only reconnect helper)
 playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)
 tests/                              Vitest unit tests; *.integration.test.ts use a real database
 ```
 
 ## Not yet covered
 
-Reconnect/disconnect and OAuth (Task 5), transaction sync (Task 6), backups and
-future deployment prerequisites (Task 7) are still to come. Do not deploy this app or point it at real bank
+Transaction sync (Task 6), backups and future deployment prerequisites (Task 7)
+are still to come. Do not deploy this app or point it at real bank
 accounts until then.

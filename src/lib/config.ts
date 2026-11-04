@@ -13,7 +13,8 @@ const HINTS = {
   PLAID_ENV: 'must be "sandbox" or "production"',
   PLAID_CLIENT_ID: "is required when PLAID_SECRET is set",
   PLAID_SECRET: "is required when PLAID_CLIENT_ID is set",
-  PLAID_REDIRECT_URI: "must be an https:// URL",
+  PLAID_REDIRECT_URI:
+    "must be an https:// URL without a query or fragment (http://localhost is allowed only in sandbox)",
   TOKEN_ENCRYPTION_KEY: "must be 32 random bytes encoded as base64",
   TOKEN_ENCRYPTION_KEY_ID: "must be 1-32 letters, digits, '-' or '_'",
   AUTH_SECRET: "must be at least 32 characters",
@@ -23,13 +24,32 @@ const HINTS = {
 // Padded standard base64 of exactly 32 bytes is 44 chars ending in a single "=".
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
 
+/**
+ * Plaid requires https redirect URIs, with no query string or fragment. Its
+ * Sandbox alone also accepts plain http on localhost, so OAuth can be tried
+ * without a certificate. Anything else would fail at Plaid, so it is refused
+ * here with a clearer message.
+ */
+function isAcceptableRedirectUri(value: string, plaidEnv: "sandbox" | "production"): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.search || url.hash || url.username || url.password || /\s/.test(value)) return false;
+  if (url.protocol === "https:") return true;
+  const localhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  return url.protocol === "http:" && localhost && plaidEnv === "sandbox";
+}
+
 const envSchema = z
   .object({
     DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/\S+$/),
     PLAID_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
     PLAID_CLIENT_ID: z.string().min(1).optional(),
     PLAID_SECRET: z.string().min(1).optional(),
-    PLAID_REDIRECT_URI: z.string().regex(/^https:\/\/\S+$/).optional(),
+    PLAID_REDIRECT_URI: z.string().optional(),
     TOKEN_ENCRYPTION_KEY: z.string().regex(BASE64_32_BYTES),
     TOKEN_ENCRYPTION_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
     AUTH_SECRET: z.string().min(32),
@@ -43,6 +63,9 @@ const envSchema = z
     }
     if (env.PLAID_SECRET && !env.PLAID_CLIENT_ID) {
       ctx.addIssue({ code: "custom", path: ["PLAID_CLIENT_ID"] });
+    }
+    if (env.PLAID_REDIRECT_URI && !isAcceptableRedirectUri(env.PLAID_REDIRECT_URI, env.PLAID_ENV)) {
+      ctx.addIssue({ code: "custom", path: ["PLAID_REDIRECT_URI"] });
     }
   });
 

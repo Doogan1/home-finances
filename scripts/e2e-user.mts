@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient, type ItemStatus } from "@/generated/prisma/client";
 import { createHouseholdWithOwner } from "./lib/users.mjs";
 
 /**
@@ -12,7 +12,7 @@ import { createHouseholdWithOwner } from "./lib/users.mjs";
  *   tsx scripts/e2e-user.mts create   -> prints {"email","password","householdId"} as JSON
  *   tsx scripts/e2e-user.mts delete <email>
  *   tsx scripts/e2e-user.mts reset-throttle
- *   tsx scripts/e2e-user.mts seed-bank <email>   -> a synthetic connection with fake accounts
+ *   tsx scripts/e2e-user.mts seed-bank <email>   -> synthetic connections with fake accounts
  *
  * The password is random per run and exists only in the test process.
  */
@@ -21,6 +21,58 @@ const EMAIL_PATTERN = /^e2e\.[a-f0-9]{12}@example\.test$/;
 const HOUSEHOLD_PREFIX = "E2E test household ";
 // Planted in the fake stored token so tests can prove it never reaches a browser.
 const SENTINEL_CIPHERTEXT = "v1.e2e.E2E-SENTINEL-CIPHERTEXT.not-a-real-token.x";
+
+type SeedAccount = {
+  id: string;
+  name: string;
+  mask: string;
+  type: string;
+  subtype: string;
+  current: string;
+  available: string | null;
+  limit: string | null;
+  ageHours: number;
+};
+
+// Three states a connection can be in. None of them can reach Plaid: the fake
+// token is not decryptable, and tests never click anything that would call out.
+const SEEDED_CONNECTIONS: {
+  key: string;
+  institutionName: string;
+  status: ItemStatus;
+  hasToken: boolean;
+  accounts: SeedAccount[];
+}[] = [
+  {
+    key: "main",
+    institutionName: "First Platypus Bank (E2E)",
+    status: "ACTIVE",
+    hasToken: true,
+    accounts: [
+      { id: "checking", name: "E2E Checking", mask: "0000", type: "depository", subtype: "checking", current: "110", available: "100", limit: null, ageHours: 0 },
+      { id: "card", name: "E2E Credit Card", mask: "3333", type: "credit", subtype: "credit card", current: "410", available: null, limit: "2000", ageHours: 72 },
+      { id: "savings", name: "E2E Savings", mask: "1111", type: "depository", subtype: "savings", current: "1234.5", available: null, limit: null, ageHours: 0 },
+    ],
+  },
+  {
+    key: "reauth",
+    institutionName: "E2E Needs Sign-in Bank",
+    status: "LOGIN_REQUIRED",
+    hasToken: true,
+    accounts: [
+      { id: "reauth", name: "E2E Reauth Account", mask: "4444", type: "depository", subtype: "checking", current: "50", available: "50", limit: null, ageHours: 5 },
+    ],
+  },
+  {
+    key: "closed",
+    institutionName: "E2E Closed Bank",
+    status: "DISCONNECTED",
+    hasToken: false,
+    accounts: [
+      { id: "closed", name: "E2E Closed Account", mask: "5555", type: "depository", subtype: "checking", current: "75.25", available: "75.25", limit: null, ageHours: 48 },
+    ],
+  },
+];
 
 async function main() {
   const [command, argument] = process.argv.slice(2);
@@ -53,45 +105,45 @@ async function main() {
       if (!household) throw new Error("Refusing to seed a household that is not an E2E household");
 
       const now = Date.now();
-      const item = await db.plaidItem.create({
-        data: {
-          householdId: household.id,
-          environment: "SANDBOX",
-          plaidItemId: `item_e2e_${randomBytes(6).toString("hex")}`,
-          accessTokenCiphertext: SENTINEL_CIPHERTEXT,
-          institutionName: "First Platypus Bank (E2E)",
-          status: "ACTIVE",
-        },
-      });
-      const accounts = [
-        { id: "checking", name: "E2E Checking", mask: "0000", type: "depository", subtype: "checking", current: "110", available: "100", limit: null, ageHours: 0 },
-        { id: "card", name: "E2E Credit Card", mask: "3333", type: "credit", subtype: "credit card", current: "410", available: null, limit: "2000", ageHours: 72 },
-        { id: "savings", name: "E2E Savings", mask: "1111", type: "depository", subtype: "savings", current: "1234.5", available: null, limit: null, ageHours: 0 },
-      ];
-      for (const a of accounts) {
-        const account = await db.account.create({
+      for (const connection of SEEDED_CONNECTIONS) {
+        const item = await db.plaidItem.create({
           data: {
             householdId: household.id,
-            plaidItemId: item.id,
-            externalAccountId: `acct_e2e_${a.id}`,
-            name: a.name,
-            mask: a.mask,
-            type: a.type,
-            subtype: a.subtype,
-            currency: "USD",
+            environment: "SANDBOX",
+            plaidItemId: `item_e2e_${connection.key}_${randomBytes(4).toString("hex")}`,
+            accessTokenCiphertext: connection.hasToken ? SENTINEL_CIPHERTEXT : null,
+            institutionName: connection.institutionName,
+            status: connection.status,
+            lastErrorCode: connection.status === "LOGIN_REQUIRED" ? "ITEM_LOGIN_REQUIRED" : null,
           },
         });
-        await db.balanceSnapshot.create({
-          data: {
-            accountId: account.id,
-            observedAt: new Date(now - a.ageHours * 3_600_000),
-            current: a.current,
-            available: a.available,
-            limit: a.limit,
-            currency: "USD",
-            source: "ACCOUNTS_GET",
-          },
-        });
+        for (const a of connection.accounts) {
+          const account = await db.account.create({
+            data: {
+              householdId: household.id,
+              plaidItemId: item.id,
+              externalAccountId: `acct_e2e_${a.id}`,
+              name: a.name,
+              mask: a.mask,
+              type: a.type,
+              subtype: a.subtype,
+              currency: "USD",
+              active: connection.status !== "DISCONNECTED",
+              unavailableSince: connection.status === "DISCONNECTED" ? new Date(now - 24 * 3_600_000) : null,
+            },
+          });
+          await db.balanceSnapshot.create({
+            data: {
+              accountId: account.id,
+              observedAt: new Date(now - a.ageHours * 3_600_000),
+              current: a.current,
+              available: a.available,
+              limit: a.limit,
+              currency: "USD",
+              source: "ACCOUNTS_GET",
+            },
+          });
+        }
       }
     } else if (command === "delete" && argument && EMAIL_PATTERN.test(argument)) {
       const user = await db.user.findUnique({

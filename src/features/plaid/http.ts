@@ -53,6 +53,7 @@ const FLOW: Record<Exclude<PlaidFlowError["code"], "provider_error">, Mapped> = 
   connection_not_found: { status: 404, error: "connection_not_found", message: "That connection was not found." },
   invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
   duplicate_item: { status: 409, error: "duplicate_item", message: "That bank login is already connected." },
+  not_disconnected: { status: 409, error: "not_disconnected", message: "Disconnect this bank first. Only a disconnected bank's saved history can be deleted." },
   persistence_failed: { status: 500, error: "persistence_failed", message: "The bank was reached but the connection could not be saved. Start again; nothing was kept." },
   token_unreadable: { status: 500, error: "token_unreadable", message: "The stored connection key can no longer be read. Reconnect this bank." },
 };
@@ -65,6 +66,7 @@ const PROVIDER: Record<PlaidErrorKind, Mapped> = {
   login_required: { status: 409, error: "login_required", message: "The bank needs you to sign in again." },
   misconfigured: { status: 503, error: "plaid_misconfigured", message: "The Plaid credentials were rejected. Check the server configuration." },
   invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
+  item_gone: { status: 404, error: "connection_not_found", message: "Plaid no longer has that connection." },
   unknown: { status: 502, error: "provider_error", message: "Plaid returned an unexpected error. Try again later." },
 };
 
@@ -101,4 +103,10 @@ export function plaidErrorResponse(error: unknown, route: string): Response {
 
   console.error(`[plaid] ${route} failed unexpectedly`, { name: error instanceof Error ? error.name : typeof error });
   return jsonNoStore({ error: "internal_error", message: "Something went wrong." }, 500);
+}
+
+/** The `[id]` segment as a uuid, or null. A malformed id is just "not found". */
+export async function connectionIdFrom(context: { params: Promise<{ id: string }> }): Promise<string | null> {
+  const parsed = z.uuid().safeParse((await context.params).id);
+  return parsed.success ? parsed.data : null;
 }

@@ -29,6 +29,41 @@ export type ProviderAccount = {
   providerUpdatedAt: Date | null;
 };
 
+/**
+ * One transaction as Plaid reports it, reduced to what the app keeps. Amounts
+ * keep Plaid's sign convention (positive = money out of the account, negative =
+ * money in) as exact decimal strings.
+ */
+export type ProviderTransaction = {
+  providerTransactionId: string;
+  externalAccountId: string;
+  amount: string;
+  currency: string;
+  /** Calendar dates as YYYY-MM-DD; they have no time zone. */
+  date: string;
+  authorizedDate: string | null;
+  pending: boolean;
+  /** For a posted transaction: the pending one it replaces. */
+  pendingProviderTransactionId: string | null;
+  description: string;
+  merchantName: string | null;
+};
+
+export type SyncUpdateStatus = "NOT_READY" | "INITIAL_UPDATE_COMPLETE" | "HISTORICAL_UPDATE_COMPLETE" | "UNKNOWN";
+
+export type SyncPage = {
+  added: ProviderTransaction[];
+  modified: ProviderTransaction[];
+  removed: { providerTransactionId: string; externalAccountId: string }[];
+  /** Empty while Plaid has no data yet; such a cursor must never be saved. */
+  nextCursor: string;
+  hasMore: boolean;
+  status: SyncUpdateStatus;
+  /** Accounts that appear in this page (not necessarily all of the Item's). */
+  accounts: ProviderAccount[];
+  requestId: string | null;
+};
+
 export type ProviderAccounts = {
   providerItemId: string;
   institutionId: string | null;
@@ -59,6 +94,8 @@ export interface PlaidGateway {
   exchangePublicToken(publicToken: string): Promise<{ accessToken: string; providerItemId: string }>;
   getAccounts(accessToken: string): Promise<ProviderAccounts>;
   removeItem(accessToken: string): Promise<void>;
+  /** One page of /transactions/sync. `cursor` null means "from the beginning". */
+  syncTransactions(accessToken: string, cursor: string | null, count: number): Promise<SyncPage>;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +110,8 @@ export type PlaidErrorKind =
   | "timeout"
   | "unavailable"
   | "misconfigured"
+  /** The data changed while pages were being read; the whole batch must restart. */
+  | "mutation_during_pagination"
   /** Plaid no longer knows this Item or token (e.g. it was already removed). */
   | "item_gone"
   | "unknown";
@@ -116,6 +155,9 @@ export type PlaidFlowErrorCode =
   | "duplicate_item"
   | "persistence_failed"
   | "not_disconnected"
+  | "sync_in_progress"
+  | "sync_throttled"
+  | "reconnect_required"
   | "token_unreadable"
   | "provider_error";
 
@@ -123,12 +165,15 @@ export type PlaidFlowErrorCode =
 export class PlaidFlowError extends Error {
   readonly code: PlaidFlowErrorCode;
   readonly provider?: PlaidProviderError;
+  /** For sync_throttled: how long until the next manual sync is allowed. */
+  readonly retryAfterSeconds?: number;
 
-  constructor(code: PlaidFlowErrorCode, provider?: PlaidProviderError) {
+  constructor(code: PlaidFlowErrorCode, provider?: PlaidProviderError, extra?: { retryAfterSeconds?: number }) {
     super(`Plaid flow failed (${code})`);
     this.name = "PlaidFlowError";
     this.code = code;
     this.provider = provider;
+    this.retryAfterSeconds = extra?.retryAfterSeconds;
   }
 }
 
@@ -169,3 +214,47 @@ export type DisconnectResult = {
 
 /** `errorCode` is a safe provider/app code when the fetch failed, otherwise null. */
 export type RefreshResult = { status: ItemStatus; accountCount: number; errorCode: string | null };
+
+// ---------------------------------------------------------------------------
+// Transaction sync
+// ---------------------------------------------------------------------------
+
+/** Limits and timing for a sync. Defaults live in sync.ts; tests shrink them. */
+export type SyncTuning = {
+  /** Updates requested per page (Plaid allows 1 to 500). */
+  pageSize: number;
+  /** Pages held in memory before giving up, which bounds the staged batch. */
+  maxPages: number;
+  /** Times the whole batch restarts after the data changed mid-read. */
+  maxRestarts: number;
+  /** Tries per page for transient errors (timeouts, outages, rate limits). */
+  maxAttempts: number;
+  /** How long a sync may hold an Item before others may take over. */
+  leaseMs: number;
+  backoffMs: (attempt: number) => number;
+  sleep: (ms: number) => Promise<void>;
+};
+
+export type SyncDeps = LinkDeps & { sync?: Partial<SyncTuning> };
+
+export type SyncOptions = {
+  /** Refuse (sync_throttled) if the previous run started more recently than this. Web only. */
+  minIntervalMs?: number;
+};
+
+/**
+ * What a sync reports. Deliberately has no cursor, token or provider ids: it is
+ * safe to show in a page, print in a terminal or return from a route.
+ */
+export type SyncSummary = {
+  runId: string;
+  status: "SUCCEEDED" | "FAILED";
+  added: number;
+  modified: number;
+  removed: number;
+  completedAt: Date;
+  /** Safe code when status is FAILED, otherwise null. */
+  errorCode: string | null;
+  /** Plaid's statement about data completeness, e.g. NOT_READY. */
+  providerStatus: string | null;
+};

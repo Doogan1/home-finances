@@ -9,10 +9,14 @@ export const SECRET_IN_SDK_ERRORS = "secret-synthetic-do-not-leak";
 export const ACCESS_TOKEN = "access-sandbox-synthetic-0001";
 export const PUBLIC_TOKEN = "public-sandbox-synthetic-0001";
 export const LINK_TOKEN = "link-sandbox-synthetic-0001";
+export const MUTATION_ERROR = {
+  error_type: "TRANSACTIONS_ERROR",
+  error_code: "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION",
+} as const;
 
 export type FakePlaidApi = Pick<
   PlaidApi,
-  "linkTokenCreate" | "itemPublicTokenExchange" | "accountsGet" | "itemRemove"
+  "linkTokenCreate" | "itemPublicTokenExchange" | "accountsGet" | "itemRemove" | "transactionsSync"
 >;
 
 /**
@@ -94,6 +98,61 @@ export function accountsGetResponse(
   };
 }
 
+type FakeTransaction = {
+  transaction_id: string;
+  account_id: string;
+  amount: number;
+  iso_currency_code: string | null;
+  unofficial_currency_code: string | null;
+  date: string;
+  authorized_date: string | null;
+  name: string;
+  merchant_name: string | null;
+  pending: boolean;
+  pending_transaction_id: string | null;
+};
+
+export function txn(overrides: Partial<FakeTransaction> & { transaction_id: string; account_id: string }): FakeTransaction {
+  return {
+    amount: 12.34,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+    date: "2026-11-01",
+    authorized_date: null,
+    name: "Coffee shop",
+    merchant_name: "Coffee Shop",
+    pending: false,
+    pending_transaction_id: null,
+    ...overrides,
+  };
+}
+
+/** One page of a /transactions/sync response. */
+export function syncPage(
+  page: {
+    added?: FakeTransaction[];
+    modified?: FakeTransaction[];
+    removed?: { transaction_id: string; account_id: string }[];
+    next_cursor?: string;
+    has_more?: boolean;
+    status?: "NOT_READY" | "INITIAL_UPDATE_COMPLETE" | "HISTORICAL_UPDATE_COMPLETE";
+    accounts?: FakeAccount[];
+  } = {},
+) {
+  return {
+    data: {
+      added: page.added ?? [],
+      modified: page.modified ?? [],
+      removed: page.removed ?? [],
+      next_cursor: page.next_cursor ?? "cursor_1",
+      has_more: page.has_more ?? false,
+      transactions_update_status: page.status ?? "HISTORICAL_UPDATE_COMPLETE",
+      accounts: page.accounts ?? [],
+      request_id: "req_sync_1",
+    },
+  };
+}
+
 export function createFakePlaidApi() {
   const api = {
     linkTokenCreate: vi.fn<(request: unknown) => Promise<{ data: unknown }>>(async () => ({
@@ -104,6 +163,7 @@ export function createFakePlaidApi() {
     })),
     accountsGet: vi.fn<(request: unknown) => Promise<{ data: unknown }>>(async () => ({ data: accountsGetResponse() })),
     itemRemove: vi.fn<(request: unknown) => Promise<{ data: unknown }>>(async () => ({ data: { request_id: "req_remove_1" } })),
+    transactionsSync: vi.fn<(request: unknown) => Promise<{ data: unknown }>>(async () => syncPage()),
   };
   return api;
 }

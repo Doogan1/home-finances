@@ -167,7 +167,17 @@ model PlaidItem {
   institutionId         String?
   institutionName       String?
   status                ItemStatus       @default(PENDING)
+  // Plaid's transactions/sync cursor. Moves only in the same database
+  // transaction that applies the data it covers. Null until a first sync
+  // returns data (Plaid answers "not ready" with an empty cursor).
   syncCursor            String?
+  // Bumped each time the cursor moves; a commit proves nothing else moved it.
+  syncCursorVersion     Int              @default(0)
+  // A sync holds a lease while it runs: a random token plus an expiry. A crashed
+  // worker's lease simply expires; a stale holder's commit is rejected because
+  // its token no longer matches.
+  syncLeaseToken        String?
+  syncLeaseExpiresAt    DateTime?
   lastSuccessfulSyncAt  DateTime?
   // Safe, provider-defined error code only; never raw payloads.
   lastErrorCode         String?
@@ -342,6 +352,9 @@ model SyncRun {
   addedCount     Int           @default(0)
   modifiedCount  Int           @default(0)
   removedCount   Int           @default(0)
+  // Plaid's own statement of how complete the data is (for example NOT_READY).
+  providerStatus String?
+  pageCount      Int           @default(0)
 
   plaidItem PlaidItem @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
 

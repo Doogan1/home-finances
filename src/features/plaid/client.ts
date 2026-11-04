@@ -5,6 +5,8 @@ import {
   PlaidApi,
   PlaidEnvironments,
   Products,
+  type AccountBase,
+  type Transaction,
 } from "plaid";
 import { Prisma } from "@/generated/prisma/client";
 import { getServerConfig } from "@/lib/config";
@@ -14,6 +16,8 @@ import {
   type PlaidErrorKind,
   type PlaidGateway,
   type ProviderAccount,
+  type ProviderTransaction,
+  type SyncUpdateStatus,
 } from "./types";
 
 /**
@@ -29,7 +33,7 @@ const NO_CURRENCY = "XXX";
 
 type PlaidApiMethods = Pick<
   PlaidApi,
-  "linkTokenCreate" | "itemPublicTokenExchange" | "accountsGet" | "itemRemove"
+  "linkTokenCreate" | "itemPublicTokenExchange" | "accountsGet" | "itemRemove" | "transactionsSync"
 >;
 
 export function createPlaidApi(options: {
@@ -98,6 +102,7 @@ export function toProviderError(error: unknown): PlaidProviderError {
 
   let kind: PlaidErrorKind = "unknown";
   if (code && LOGIN_REQUIRED_CODES.has(code)) kind = "login_required";
+  else if (code === "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION") kind = "mutation_during_pagination";
   else if (code === "INVALID_PUBLIC_TOKEN") kind = "invalid_public_token";
   else if (code && ENTITLEMENT_CODES.has(code)) kind = "missing_entitlement";
   else if (code && ITEM_GONE_CODES.has(code)) kind = "item_gone";
@@ -131,6 +136,46 @@ function toDecimalString(value: number | null | undefined): string | null {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   return new Prisma.Decimal(value).toFixed();
 }
+
+function toProviderAccount(account: AccountBase): ProviderAccount {
+  return {
+    externalAccountId: account.account_id,
+    name: account.name,
+    officialName: account.official_name ?? null,
+    mask: account.mask ?? null,
+    type: String(account.type),
+    subtype: account.subtype ? String(account.subtype) : null,
+    currency: account.balances.iso_currency_code ?? account.balances.unofficial_currency_code ?? NO_CURRENCY,
+    balances: {
+      available: toDecimalString(account.balances.available),
+      current: toDecimalString(account.balances.current),
+      limit: toDecimalString(account.balances.limit),
+    },
+    providerUpdatedAt: account.balances.last_updated_datetime ? new Date(account.balances.last_updated_datetime) : null,
+  };
+}
+
+function toProviderTransaction(t: Transaction): ProviderTransaction {
+  return {
+    providerTransactionId: t.transaction_id,
+    externalAccountId: t.account_id,
+    // Plaid's own sign convention, as exact decimal text.
+    amount: toDecimalString(t.amount) ?? "0",
+    currency: t.iso_currency_code ?? t.unofficial_currency_code ?? NO_CURRENCY,
+    date: t.date,
+    authorizedDate: t.authorized_date ?? null,
+    pending: t.pending,
+    pendingProviderTransactionId: t.pending_transaction_id ?? null,
+    description: t.name || t.merchant_name || "Transaction",
+    merchantName: t.merchant_name ?? null,
+  };
+}
+
+const UPDATE_STATUSES: Record<string, SyncUpdateStatus> = {
+  NOT_READY: "NOT_READY",
+  INITIAL_UPDATE_COMPLETE: "INITIAL_UPDATE_COMPLETE",
+  HISTORICAL_UPDATE_COMPLETE: "HISTORICAL_UPDATE_COMPLETE",
+};
 
 export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
   return {
@@ -167,23 +212,7 @@ export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
 
     async getAccounts(accessToken) {
       const data = await call(() => api.accountsGet({ access_token: accessToken }));
-      const accounts: ProviderAccount[] = data.accounts.map((account) => ({
-        externalAccountId: account.account_id,
-        name: account.name,
-        officialName: account.official_name ?? null,
-        mask: account.mask ?? null,
-        type: String(account.type),
-        subtype: account.subtype ? String(account.subtype) : null,
-        currency: account.balances.iso_currency_code ?? account.balances.unofficial_currency_code ?? NO_CURRENCY,
-        balances: {
-          available: toDecimalString(account.balances.available),
-          current: toDecimalString(account.balances.current),
-          limit: toDecimalString(account.balances.limit),
-        },
-        providerUpdatedAt: account.balances.last_updated_datetime
-          ? new Date(account.balances.last_updated_datetime)
-          : null,
-      }));
+      const accounts: ProviderAccount[] = data.accounts.map(toProviderAccount);
       return {
         providerItemId: data.item.item_id,
         institutionId: data.item.institution_id ?? null,
@@ -195,6 +224,22 @@ export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
 
     async removeItem(accessToken) {
       await call(() => api.itemRemove({ access_token: accessToken }));
+    },
+
+    async syncTransactions(accessToken, cursor, count) {
+      const data = await call(() =>
+        api.transactionsSync({ access_token: accessToken, count, ...(cursor ? { cursor } : {}) }),
+      );
+      return {
+        added: data.added.map(toProviderTransaction),
+        modified: data.modified.map(toProviderTransaction),
+        removed: data.removed.map((r) => ({ providerTransactionId: r.transaction_id, externalAccountId: r.account_id })),
+        nextCursor: data.next_cursor,
+        hasMore: data.has_more,
+        status: UPDATE_STATUSES[String(data.transactions_update_status)] ?? "UNKNOWN",
+        accounts: data.accounts.map(toProviderAccount),
+        requestId: data.request_id ?? null,
+      };
     },
   };
 }

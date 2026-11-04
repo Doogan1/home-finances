@@ -117,6 +117,7 @@ async function main() {
             lastErrorCode: connection.status === "LOGIN_REQUIRED" ? "ITEM_LOGIN_REQUIRED" : null,
           },
         });
+        const accountIds = new Map<string, string>();
         for (const a of connection.accounts) {
           const account = await db.account.create({
             data: {
@@ -143,6 +144,50 @@ async function main() {
               source: "ACCOUNTS_GET",
             },
           });
+          accountIds.set(a.id, account.id);
+        }
+
+        if (connection.key === "main") {
+          // A little transaction history and a finished sync run, so the
+          // Transactions page has something real to show without calling Plaid.
+          const day = (daysAgo: number) => new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() - daysAgo));
+          const rows = [
+            { id: "coffee", account: "checking", amount: "4.50", daysAgo: 1, name: "E2E Coffee Shop", pending: true, removed: false },
+            { id: "grocery", account: "checking", amount: "82.17", daysAgo: 2, name: "E2E Grocery Store", pending: false, removed: false },
+            { id: "payroll", account: "checking", amount: "-2500.00", daysAgo: 3, name: "E2E Payroll Deposit", pending: false, removed: false },
+            { id: "refund", account: "card", amount: "-15.00", daysAgo: 4, name: "E2E Store Refund", pending: false, removed: false },
+            // Plaid removed this one (or a posted version replaced it): it must never be shown.
+            { id: "removed", account: "checking", amount: "99.99", daysAgo: 5, name: "E2E Removed Charge", pending: false, removed: true },
+          ];
+          for (const r of rows) {
+            await db.transaction.create({
+              data: {
+                accountId: accountIds.get(r.account)!,
+                plaidItemId: item.id,
+                providerTransactionId: `txn_e2e_${r.id}`,
+                amount: r.amount,
+                currency: "USD",
+                date: day(r.daysAgo),
+                pending: r.pending,
+                description: r.name,
+                merchantName: r.name,
+                removedAt: r.removed ? new Date(now) : null,
+              },
+            });
+          }
+          const finished = new Date(now - 2 * 3_600_000);
+          await db.syncRun.create({
+            data: {
+              plaidItemId: item.id,
+              status: "SUCCEEDED",
+              startedAt: finished,
+              finishedAt: finished,
+              addedCount: 4,
+              providerStatus: "HISTORICAL_UPDATE_COMPLETE",
+              pageCount: 1,
+            },
+          });
+          await db.plaidItem.update({ where: { id: item.id }, data: { lastSuccessfulSyncAt: finished } });
         }
       }
     } else if (command === "delete" && argument && EMAIL_PATTERN.test(argument)) {

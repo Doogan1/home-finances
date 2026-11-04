@@ -6,11 +6,11 @@ TypeScript, PostgreSQL, Prisma and the Plaid Node SDK.
 
 Design and scope live in [docs/home-finances-spec.md](docs/home-finances-spec.md);
 the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-implementation-plan.md).
-This repository currently covers **Task 1 (containerized dev environment)**,
-**Task 2 (database schema and encrypted token storage)** and **Task 3 (closed
-household authentication)** , **Task 4 (connecting a Plaid Sandbox bank and
-viewing balances)** and **Task 5 (reconnect, disconnect, OAuth support)**.
-Nothing here deploys anything or contacts a bank.
+This repository currently covers **Task 1** (containerized dev environment),
+**Task 2** (database schema and encrypted token storage), **Task 3** (closed
+household authentication), **Task 4** (connecting a Plaid Sandbox bank and viewing
+balances), **Task 5** (reconnect, disconnect, OAuth support) and **Task 6**
+(manual transaction sync). Nothing here deploys anything or contacts a real bank.
 
 ## Prerequisites
 
@@ -56,6 +56,7 @@ docker compose exec app npm run build
 docker compose exec app npm run db:migrate         # apply migrations + refresh app-role grants
 docker compose exec app npm run db:migrate:dev -- --name describe_the_change   # create a NEW migration
 docker compose exec app npm run auth:bootstrap -- --add-member   # add another person to the household
+docker compose exec app npm run sync                 # list connections; `-- <id>` or `-- --all` to sync transactions
 docker compose logs -f app
 ```
 
@@ -177,6 +178,17 @@ Details and recovery steps are in [docs/plaid-link.md](docs/plaid-link.md).
 - `npm run plaid:sandbox` is a Sandbox-only helper to force "sign-in needed" for trying Reconnect.
 - After pulling this change run `docker compose exec app npm run db:migrate`.
 
+## Choices made in Task 6
+
+Full design, guarantees and recovery steps are in [docs/transaction-sync.md](docs/transaction-sync.md).
+
+- **Manual only.** Transactions are fetched when you press **Sync now** (Transactions page, at most once a minute per bank) or run `npm run sync`. Both call the same service. Opening a page never contacts Plaid.
+- **All or nothing.** A sync reads every page into memory, then commits in one database transaction that first proves nothing changed (lease token, cursor and cursor version). Any failure (timeout, bank outage, data changing mid-read, a lost lease, a database error) leaves the stored data and the cursor exactly as they were.
+- **One at a time per bank**, using a database lease that expires by itself if a worker dies. Transient errors are retried a bounded number of times; "data changed while paging" restarts the whole batch from the original cursor.
+- **No data yet is not an error.** Plaid answers with empty results and an empty cursor right after linking; that is recorded as a success and the empty cursor is never saved.
+- **Amounts keep Plaid's sign** (positive = money out) as exact decimals; removed transactions are marked, not deleted; a posted transaction retires its pending twin so a charge is never counted twice.
+- After pulling this change: `docker compose exec app npm run db:migrate`, then **restart the app container** (`docker compose restart app`) so the running dev server picks up the new database client.
+
 ## Layout
 
 ```text
@@ -200,12 +212,13 @@ src/proxy.ts                        optimistic redirect for visitors with no ses
 src/app/login/, src/app/api/auth/   login page and the Better Auth route handler
 scripts/bootstrap-user.mts          `npm run auth:bootstrap` (hidden password prompt)
 scripts/plaid-sandbox.mts           `npm run plaid:sandbox` (Sandbox-only reconnect helper)
+scripts/sync.mts                    `npm run sync` (same sync service as the button)
 playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)
 tests/                              Vitest unit tests; *.integration.test.ts use a real database
 ```
 
 ## Not yet covered
 
-Transaction sync (Task 6), backups and future deployment prerequisites (Task 7)
-are still to come. Do not deploy this app or point it at real bank
+Backups and restore, and future deployment prerequisites (Task 7) are still to
+come. There are no webhooks or scheduled syncs. Do not deploy this app or point it at real bank
 accounts until then.

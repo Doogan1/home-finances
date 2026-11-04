@@ -53,6 +53,9 @@ const FLOW: Record<Exclude<PlaidFlowError["code"], "provider_error">, Mapped> = 
   connection_not_found: { status: 404, error: "connection_not_found", message: "That connection was not found." },
   invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
   duplicate_item: { status: 409, error: "duplicate_item", message: "That bank login is already connected." },
+  sync_in_progress: { status: 409, error: "sync_in_progress", message: "A sync is already running for this bank. Give it a moment." },
+  sync_throttled: { status: 429, error: "sync_throttled", message: "Synced very recently. Wait a little before syncing again." },
+  reconnect_required: { status: 409, error: "reconnect_required", message: "The bank needs you to sign in again. Use Reconnect first." },
   not_disconnected: { status: 409, error: "not_disconnected", message: "Disconnect this bank first. Only a disconnected bank's saved history can be deleted." },
   persistence_failed: { status: 500, error: "persistence_failed", message: "The bank was reached but the connection could not be saved. Start again; nothing was kept." },
   token_unreadable: { status: 500, error: "token_unreadable", message: "The stored connection key can no longer be read. Reconnect this bank." },
@@ -66,6 +69,7 @@ const PROVIDER: Record<PlaidErrorKind, Mapped> = {
   login_required: { status: 409, error: "login_required", message: "The bank needs you to sign in again." },
   misconfigured: { status: 503, error: "plaid_misconfigured", message: "The Plaid credentials were rejected. Check the server configuration." },
   invalid_public_token: { status: 400, error: "invalid_public_token", message: "Plaid did not accept that sign-in. Start again." },
+  mutation_during_pagination: { status: 503, error: "sync_conflict", message: "The bank's data changed while it was being read. Try again." },
   item_gone: { status: 404, error: "connection_not_found", message: "Plaid no longer has that connection." },
   unknown: { status: 502, error: "provider_error", message: "Plaid returned an unexpected error. Try again later." },
 };
@@ -92,7 +96,11 @@ export function plaidErrorResponse(error: unknown, route: string): Response {
       providerCode: provider?.code,
       requestId: provider?.requestId,
     });
-    return jsonNoStore({ error: mapped.error, message: mapped.message }, mapped.status);
+    const body: Record<string, unknown> = { error: mapped.error, message: mapped.message };
+    if (error.retryAfterSeconds !== undefined) body.retryAfterSeconds = error.retryAfterSeconds;
+    const response = jsonNoStore(body, mapped.status);
+    if (error.retryAfterSeconds !== undefined) response.headers.set("retry-after", String(error.retryAfterSeconds));
+    return response;
   }
 
   if (error instanceof PlaidProviderError) {

@@ -208,7 +208,7 @@ one, that is a decision for you to make.
 
 ## Not yet covered
 
-Transaction sync is Task 6. There is no automatic reconciliation job, no webhook
+Transaction sync is documented in [transaction-sync.md](transaction-sync.md). There is no automatic reconciliation job, no webhook
 handling (so "sign-in needed" is only noticed on an explicit refresh), and
 link-token creation is not rate limited beyond Plaid's own limits.
 

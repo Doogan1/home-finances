@@ -103,3 +103,98 @@ export function describeConnection(status: ItemStatusName, errorCode: string | n
       };
   }
 }
+
+/** A calendar date with no time zone (a transaction date), e.g. "Nov 1, 2026". */
+export function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(date);
+}
+
+export type SyncStateView = {
+  headline: string;
+  tone: "ok" | "warn" | "error" | "muted";
+  detail: string | null;
+};
+
+type LastRun = {
+  status: "RUNNING" | "SUCCEEDED" | "FAILED";
+  errorCode: string | null;
+  providerStatus: string | null;
+  addedCount: number;
+  modifiedCount: number;
+  removedCount: number;
+  startedAt: Date;
+  finishedAt: Date | null;
+} | null;
+
+const SYNC_FAILURES: Record<string, string> = {
+  timeout: "Plaid did not answer in time, so nothing was changed. Try again in a moment.",
+  unavailable: "Plaid or the bank is temporarily unavailable, so nothing was changed. Try again later.",
+  rate_limited: "Plaid asked us to slow down, so nothing was changed. Try again in a minute.",
+  INSTITUTION_DOWN: "The bank is temporarily unavailable, so nothing was changed. Try again later.",
+  INSTITUTION_NOT_RESPONDING: "The bank is not responding, so nothing was changed. Try again later.",
+  TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION:
+    "The bank's data kept changing while it was being read, so nothing was changed. Try again.",
+  lease_lost: "Another sync took over, so this one was discarded. Nothing was changed.",
+  cursor_conflict: "Another sync changed things while this one ran, so it was discarded. Try again.",
+  sync_too_large: "There is more history than one sync can safely apply. Nothing was changed.",
+  persistence_failed: "The results could not be saved, so nothing was changed. Try again.",
+  unknown_account: "Plaid sent transactions for an account that is not known here, so nothing was changed.",
+  INVALID_API_KEYS: "Plaid rejected the server's credentials. Check the Plaid settings.",
+};
+
+/**
+ * What to tell the person about a connection's transactions, from its last sync
+ * run. Distinguishes "no data yet" (not an error), "needs a sign-in" and a
+ * temporary failure; raw provider codes are never shown.
+ */
+export function describeSync(
+  input: { connectionStatus: ItemStatusName; lastRun: LastRun; lastSuccessfulSyncAt: Date | null },
+  now: Date,
+): SyncStateView {
+  const { connectionStatus, lastRun, lastSuccessfulSyncAt } = input;
+
+  if (connectionStatus === "LOGIN_REQUIRED") {
+    return { headline: "Sign-in needed", tone: "error", detail: "Reconnect this bank on the Connections page before syncing." };
+  }
+  if (!lastRun) {
+    return { headline: "Not synced yet", tone: "muted", detail: "Use “Sync now” to fetch this bank's transactions." };
+  }
+  if (lastRun.status === "RUNNING") {
+    return { headline: "Syncing…", tone: "muted", detail: null };
+  }
+  if (lastRun.status === "FAILED") {
+    const known = lastRun.errorCode ? SYNC_FAILURES[lastRun.errorCode] : undefined;
+    const since = lastSuccessfulSyncAt ? ` Last successful sync: ${describeAge(lastSuccessfulSyncAt, now)}.` : "";
+    if (lastRun.errorCode === "ITEM_LOGIN_REQUIRED") {
+      return {
+        headline: "Sign-in needed",
+        tone: "error",
+        detail: "The bank needs you to sign in again. Reconnect it on the Connections page.",
+      };
+    }
+    return {
+      headline: "Last sync failed",
+      tone: "error",
+      detail: `${known ?? "The last sync did not complete, so nothing was changed. Try again."}${since}`,
+    };
+  }
+
+  if (lastRun.providerStatus === "NOT_READY") {
+    return {
+      headline: "No transactions yet",
+      tone: "warn",
+      detail:
+        "Plaid is still preparing this bank's transactions. That can take a few minutes after connecting; it is not an error. Sync again shortly.",
+    };
+  }
+  const when = lastRun.finishedAt ? describeAge(lastRun.finishedAt, now) : "recently";
+  const changes = `${lastRun.addedCount} new, ${lastRun.modifiedCount} changed, ${lastRun.removedCount} removed`;
+  if (lastRun.providerStatus === "INITIAL_UPDATE_COMPLETE") {
+    return {
+      headline: "Recent transactions loaded",
+      tone: "ok",
+      detail: `Older history is still arriving from the bank. Last sync ${when} (${changes}).`,
+    };
+  }
+  return { headline: "Up to date", tone: "ok", detail: `Last sync ${when} (${changes}).` };
+}

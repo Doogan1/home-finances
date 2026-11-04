@@ -57,4 +57,4 @@ writeFileSync(envPath, output, { mode: 0o600 });
 
 console.log("Created .env with new local secrets (values not shown).");
 console.log("Back up TOKEN_ENCRYPTION_KEY somewhere safe; stored bank tokens are unreadable without it.");
-console.log("Fill in PLAID_CLIENT_ID and PLAID_SECRET later, in Task 4.");
+console.log("Add your Plaid Sandbox PLAID_CLIENT_ID and PLAID_SECRET when you want to connect a bank.");

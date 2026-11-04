@@ -5,6 +5,7 @@ import {
   decryptToken,
   encryptToken,
   plaidItemTokenContext,
+  tokenKeyId,
 } from "@/lib/crypto/tokens";
 
 // Synthetic keys and tokens only. Nothing here is a real credential.
@@ -214,5 +215,31 @@ describe("encryptToken / decryptToken bound to server configuration", () => {
     stubValidEnv(Buffer.alloc(32, 6));
 
     expect(() => decryptToken(encrypted, CONTEXT)).toThrow(TokenCryptoError);
+  });
+
+  describe("after a rotation (configured retired keys)", () => {
+    const oldKey = Buffer.alloc(32, 5);
+    const newKey = Buffer.alloc(32, 6);
+
+    function stubRotatedEnv(retired: string) {
+      stubValidEnv(newKey);
+      vi.stubEnv("TOKEN_ENCRYPTION_KEY_ID", "v2");
+      vi.stubEnv("TOKEN_ENCRYPTION_RETIRED_KEYS", retired);
+    }
+
+    it("still reads data written under the retired key, and writes under the new one", () => {
+      const stored = createTokenCipher({ current: { keyId: "v1", key: oldKey } }).encryptToken(PLAINTEXT, CONTEXT);
+      stubRotatedEnv("v1:" + oldKey.toString("base64"));
+
+      expect(decryptToken(stored, CONTEXT)).toBe(PLAINTEXT);
+      expect(tokenKeyId(encryptToken(PLAINTEXT, CONTEXT))).toBe("v2");
+    });
+
+    it("cannot read the old data once the retired key is removed", () => {
+      const stored = createTokenCipher({ current: { keyId: "v1", key: oldKey } }).encryptToken(PLAINTEXT, CONTEXT);
+      stubRotatedEnv("");
+
+      expect(() => decryptToken(stored, CONTEXT)).toThrow(TokenCryptoError);
+    });
   });
 });

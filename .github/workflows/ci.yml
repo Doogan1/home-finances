@@ -1,0 +1,67 @@
+# Continuous checks. Everything here uses synthetic data and fake credentials:
+# no job contacts Plaid, a bank, or any real service, and no repository secret is
+# used. Not run from the author's machine (it needs GitHub Actions); the same
+# steps are what `docker compose exec app npm run ...` runs locally.
+#
+# Not covered here, because they need Docker Desktop on a developer machine:
+# `npm run test:e2e`, `npm run test:backup`, `npm run verify:image`.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci_owner
+          POSTGRES_PASSWORD: ci_owner_password
+          POSTGRES_DB: home_finances
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_owner -d home_finances"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Throwaway values for a throwaway database. The integration tests create
+      # and drop their own uniquely named databases on this server.
+      MIGRATION_DATABASE_URL: postgresql://ci_owner:ci_owner_password@localhost:5432/home_finances
+      APP_DB_USER: home_finances_app
+      APP_DB_PASSWORD: ci_app_password
+      DATABASE_URL: postgresql://home_finances_app:ci_app_password@localhost:5432/home_finances
+      # 32 bytes of 0x01, base64. A fake key; it protects nothing.
+      TOKEN_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
+      TOKEN_ENCRYPTION_KEY_ID: v1
+      AUTH_SECRET: ci-only-auth-secret-not-used-anywhere-else-0123456789
+      APP_URL: http://localhost:3000
+      PLAID_ENV: sandbox
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration

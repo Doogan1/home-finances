@@ -1,0 +1,249 @@
+# Running and looking after Home Finances locally
+
+Everything here is written for Docker Desktop on Windows (PowerShell or any
+shell) and works the same elsewhere. Nothing in this repository deploys
+anything. For the (unapproved, not started) idea of hosting it on the existing
+VM, see [future-deployment.md](future-deployment.md).
+
+## At a glance
+
+| I want to… | Run |
+| --- | --- |
+| Set up from a fresh clone | `npm run setup:env` → `docker compose up --build -d` → `docker compose exec app npm run db:migrate` → `docker compose exec app npm run auth:bootstrap` |
+| Open the app | <http://localhost:3000> (always `localhost`, not `127.0.0.1`) |
+| Stop / start without losing data | `docker compose down` / `docker compose up -d` |
+| See logs | `docker compose logs -f app` (or `db`) |
+| Apply new migrations | `docker compose exec app npm run db:migrate`, then `docker compose restart app` |
+| Sync transactions | the **Sync now** button, or `docker compose exec app npm run sync -- --all` |
+| Back up | `npm run backup` (on the host) |
+| Restore (safely, into a separate database) | `npm run restore -- <file>` |
+| Rotate the token-encryption key | [see below](#rotating-the-token-encryption-key) |
+| Run every check | [see below](#checks-and-tests) |
+
+## What survives a restart
+
+| Thing | Where | Survives `down` / `up` | Survives `down -v` |
+| --- | --- | --- | --- |
+| Database (accounts, balances, transactions, users) | volume `home-finances_db-data` | yes | **no, deleted** |
+| Linux `node_modules` | volume `home-finances_app-node-modules` | yes | no (rebuilt) |
+| Next.js build cache | volume `home-finances_app-next` | yes | no (rebuilt) |
+| Secrets | `.env` (git-ignored) | yes | yes |
+| Backups | `backups/` (git-ignored) | yes | yes |
+
+`docker compose down` is always safe. **`docker compose down -v` deletes the
+database volume and everything in it**; never use it as a clean-up shortcut. A
+Docker volume is not a backup.
+
+If you change `package.json`, refresh the dependency volume:
+
+```bash
+docker compose down
+docker volume rm home-finances_app-node-modules
+docker compose up --build -d
+```
+
+If you change `.env`, recreate the container (Compose only reads `.env` when it
+creates one): `docker compose up -d --force-recreate app`.
+
+After a database migration, also run `docker compose restart app`: a running dev
+server keeps the database client it started with and fails with "unknown field".
+
+## Checks and tests
+
+| Command | Where | What it proves |
+| --- | --- | --- |
+| `docker compose exec app npm run lint` / `typecheck` | container | style, types |
+| `docker compose exec app npm test` | container | unit tests (config, crypto, formatting, source-tree security rules) |
+| `docker compose exec app npm run test:integration` | container | real database, fake Plaid: auth, linking, lifecycle, sync, key rotation, cross-household and CSRF checks |
+| `npm run test:e2e` | host | real browser against the dev app (needs `npx playwright install chromium` once) |
+| `npm run test:backup` | host | backup → restore round trip on throwaway databases |
+| `npm run verify:image` | host | builds the production image, scans it for your secrets, checks it is not root, runs the whole browser suite against it |
+| `docker compose exec app npm run build` | container | the production build compiles |
+
+No automated test contacts Plaid or a bank. Browser tests create a labelled
+throwaway user in the development database and delete it afterwards.
+
+## Backups
+
+```bash
+npm run backup                           # writes backups/home-finances-<db>-<UTC time>.dump
+npm run backup -- --out D:\private\finance-backups
+```
+
+What a backup is, and is not:
+
+- A PostgreSQL custom-format dump written by `pg_dump` **inside the database
+  container**, streamed straight to a file and then read back to prove it is a
+  valid archive. A half-written file is never kept.
+- It contains your accounts, balances, transactions, password hashes and the
+  **encrypted** bank tokens. It is **not encrypted** itself. Treat it as
+  sensitive.
+- It does **not** contain `TOKEN_ENCRYPTION_KEY`. Without that key the stored
+  tokens are unreadable (you would reconnect each bank); with it, a copy of the
+  file is dangerous. Keep them apart ([below](#backing-up-the-encryption-key)).
+- Sessions, sign-in counters and verification rows are left out on purpose.
+  After a restore everyone signs in again.
+- `backups/` and any `*.dump` are ignored by git and by the Docker build.
+- It sits on the same machine as the database. It protects against a bad
+  migration or a mistake, **not** against losing the computer. Copy dumps
+  somewhere else (encrypted) if that matters to you.
+
+### Restoring
+
+```bash
+npm run restore -- backups\home-finances-home_finances-20261103T120000Z.dump
+```
+
+By default this restores into a **new, separate database**
+(`home_finances_restore_<time>`), prints row counts, and says whether its content
+is identical to the live database. **The live database is not touched.** Look at
+it, then remove it when done:
+
+```bash
+docker compose exec db sh -c 'dropdb -U "$POSTGRES_USER" home_finances_restore_20261103t120000z'
+```
+
+To make the restored data the live data, use the explicit form. It refuses unless
+you repeat the live database's exact name and the app is stopped:
+
+```bash
+docker compose stop app
+npm run restore -- <file> --target home_finances --replace-live --confirm home_finances
+docker compose start app
+```
+
+Even then nothing is overwritten in place. The dump is restored into a side
+database first; only if that succeeds are the two swapped by renaming, in one
+transaction. The database you had stays, renamed `home_finances_replaced_<time>`,
+as an instant way back. The command prints how to drop it once you are happy.
+
+### Proving a backup works
+
+`npm run test:backup` backs up a synthetic database, restores it into a second
+database, and compares every table's row count and a hash of every row, including
+awkward decimals (`12345678901234.5678`, `-9.99`, `0.0001`), `NULL` balances,
+non-ASCII text and the stored (still encrypted) token. It also checks that the
+live-database protections hold. Do an occasional real one too: restore your latest
+backup into a separate database and look at it.
+
+## Encryption keys
+
+Plaid access tokens are encrypted with AES-256-GCM (`src/lib/crypto/tokens.ts`)
+using `TOKEN_ENCRYPTION_KEY` from `.env`. Each stored token records which key id
+encrypted it (`TOKEN_ENCRYPTION_KEY_ID`, default `v1`).
+
+### Backing up the encryption key
+
+Do this right after `npm run setup:env`, and again after any rotation:
+
+1. Copy the `TOKEN_ENCRYPTION_KEY=` line (and its id) from `.env` into a password
+   manager or other restricted place.
+2. Keep it **separate from database backups**. A dump plus the key lets anyone
+   read your bank tokens; a dump alone cannot, and the key alone is useless.
+3. If you lose the key, nothing breaks except stored tokens: each bank shows an
+   error and must be reconnected (disconnect, then connect again).
+
+### Rotating the token-encryption key
+
+Rotate if the key may have been exposed, or on a schedule you choose. Banks stay
+connected throughout.
+
+1. **Back up the current `.env`** (or at least the current key) and make a
+   database backup.
+2. Generate a new key:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+3. Edit `.env`, moving the old key into the retired list and putting the new one
+   in place with a new id:
+
+   ```text
+   TOKEN_ENCRYPTION_KEY=<the NEW key>
+   TOKEN_ENCRYPTION_KEY_ID=v2
+   TOKEN_ENCRYPTION_RETIRED_KEYS=v1:<the OLD key>
+   ```
+
+   (`id:key` pairs, comma separated, for more than one old key. Ids must differ.)
+4. `docker compose up -d --force-recreate app`
+5. Preview, then re-encrypt:
+
+   ```bash
+   docker compose exec app npm run keys:rotate              # dry run, changes nothing
+   docker compose exec app npm run keys:rotate -- --apply
+   ```
+
+   It reads each token with whichever key wrote it, encrypts it under the new key,
+   proves the new value reads back, and writes it only if the row has not changed
+   in the meantime. It reports counts and connection ids, never a token or key.
+   It is safe to run again.
+6. When it reports `could not be decrypted: 0` and `already on current key` equals the
+   number of connections, **back up the new key**, then remove
+   `TOKEN_ENCRYPTION_RETIRED_KEYS` and recreate the container again. Do not
+   remove the old key while any token still needs it.
+
+Link tokens held during an in-progress OAuth attempt (a few minutes at most) are
+not re-encrypted; an attempt open across a rotation just has to be restarted.
+
+## Sandbox testing
+
+Everything defaults to Plaid **Sandbox**: fake banks, fake money, no real
+institution. With your Sandbox keys in `.env` (`PLAID_CLIENT_ID`, `PLAID_SECRET`,
+`PLAID_ENV=sandbox`):
+
+- **Connect**: Connections → *Connect a bank* → *First Platypus Bank* with
+  `user_good` / `pass_good` (Plaid's published Sandbox credentials).
+- **Sync**: Transactions → *Sync now*, or `docker compose exec app npm run sync -- --all`.
+- **Reconnect**: `docker compose exec app npm run plaid:sandbox -- reset-login <id>`
+  forces a "sign-in needed" state to repair with *Reconnect*.
+- **Disconnect and delete**: disconnecting calls Plaid's `/item/remove`; saved
+  history stays until you delete it in a separate, typed-confirmation step.
+  Details: [plaid-link.md](plaid-link.md).
+- **OAuth banks** need a registered redirect address; see
+  [plaid-link.md](plaid-link.md). Real banks need `https`.
+
+## Going live (real banks): a deliberate opt-in
+
+Nothing in this repository links a real bank unless you do all of this on
+purpose. It is never required for development or tests.
+
+1. **Check your Plaid access first**: that your dashboard has production (or
+   trial) access to Transactions, which institutions you need (some require OAuth
+   and an approved, registered **https** redirect address), the quotas, and the
+   billing terms. Removing an Item with `/item/remove` is what ends billing.
+2. **Use a separate database for real data.** Do not mix it with Sandbox: use a
+   separate Compose project (`docker compose -p home-finances-live ...`) or at
+   least a separate database, so there is a separate volume and separate backups.
+   Every query is already filtered by environment, and tokens are bound to their
+   environment when encrypted, but separation is the real safeguard.
+3. **Use a different `TOKEN_ENCRYPTION_KEY`** for the live environment.
+4. Put production credentials in that environment's `.env`:
+
+   ```text
+   PLAID_ENV=production
+   PLAID_CLIENT_ID=<production client id>
+   PLAID_SECRET=<production secret>
+   PLAID_LIVE_OPT_IN=yes
+   ```
+
+   The app **refuses to start with `PLAID_ENV=production` unless
+   `PLAID_LIVE_OPT_IN=yes` is also set**, so a stray edit or a copied `.env`
+   cannot switch it. The Connections page then shows a prominent "Production:
+   real bank data" notice.
+5. Linking a real account is still your own explicit click; the app never does it
+   for you.
+6. Take a backup and a key backup **before** the first real link, and test a
+   restore.
+
+Do not point a deployed or internet-reachable copy at real accounts until the
+items in [future-deployment.md](future-deployment.md) are done.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| "Unknown field … for omit statement" after an update | The running dev server has the old database client: `docker compose restart app` |
+| Sign-in says it is not allowed from this origin, or hot reload fails | You opened `127.0.0.1`; use <http://localhost:3000> |
+| Plaid values in `.env` are ignored | `docker compose up -d --force-recreate app` |
+| "Too many sign-in attempts" | 5 attempts a minute are allowed, shared by everyone; wait a minute |
+| A bank shows "Sign-in needed" | Connections → *Reconnect* |
+| Sync says "No transactions yet" | Normal right after linking; Plaid is still preparing them. Try again in a few minutes |
+| Port 3000 already in use | Set `APP_PORT=3001` in `.env`, set `APP_URL=http://localhost:3001` to match, and `docker compose up -d --force-recreate app`. The database is not published to the host at all |
+| `docker` commands fail | Start Docker Desktop and wait for it to say it is running |

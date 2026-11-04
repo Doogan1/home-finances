@@ -30,14 +30,21 @@ services:
     # Webpack, not the default Turbopack: only webpack honors WATCHPACK_POLLING,
     # which Docker Desktop on Windows needs for hot reload to see edits. For a
     # faster loop, run `npm run dev` on the host instead (see README).
-    command: ["npx", "next", "dev", "--webpack", "--hostname", "0.0.0.0", "--port", "3000"]
+    # `prisma generate` first: the generated database client (src/generated) is
+    # git-ignored, so a fresh checkout does not have it, and the bootstrap and sync
+    # commands need it before the dev server has ever built anything.
+    command:
+      - sh
+      - -c
+      - npx prisma generate && exec npx next dev --webpack --hostname 0.0.0.0 --port 3000
     environment:
       # Bind mounts from Windows don't deliver file-change events into Linux
       # containers, so poll for changes to keep hot reload working.
       WATCHPACK_POLLING: "true"
     ports:
       # Host side is loopback only; the app listens on 0.0.0.0 inside the container.
-      - "127.0.0.1:3000:3000"
+      # Set APP_PORT in .env if 3000 is taken (and make APP_URL match it).
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy

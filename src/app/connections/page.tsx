@@ -33,9 +33,16 @@ async function Connections() {
 
   return (
     <>
-      <p className="muted">
-        Environment: <strong>{environment === "SANDBOX" ? "Plaid Sandbox (test data, no real bank)" : "Production"}</strong>
-      </p>
+      {environment === "SANDBOX" ? (
+        <p className="muted">
+          Environment: <strong>Plaid Sandbox</strong> (test data, no real bank)
+        </p>
+      ) : (
+        <p className="notice notice-warn" role="note">
+          <strong>Production: real bank data.</strong> Banks connected here are real accounts. Sandbox connections are
+          not shown.
+        </p>
+      )}
 
       {plaidConfigured ? (
         <PlaidLinkButton />

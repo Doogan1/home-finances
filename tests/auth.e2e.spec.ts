@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { BASE_URL } from "./e2e/helpers";
 
 // Real browser, real app, real database. The user is a throwaway created by
 // tests/e2e/global-setup.ts. Sign-in attempts share one throttle counter
@@ -13,7 +14,7 @@ test("an anonymous visitor is redirected to the login page", async ({ page, requ
   const response = await request.get("/", { maxRedirects: 0 });
   expect(response.status()).toBe(307);
   // The header may be absolute or relative; resolve it either way.
-  expect(new URL(response.headers()["location"], "http://localhost:3000").pathname).toBe("/login");
+  expect(new URL(response.headers()["location"], BASE_URL).pathname).toBe("/login");
 
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
@@ -27,7 +28,7 @@ test("direct requests without a session get nothing", async ({ request }) => {
 
   // Registration is closed even for a well-formed same-origin request.
   const signUp = await request.post("/api/auth/sign-up/email", {
-    headers: { origin: "http://localhost:3000" },
+    headers: { origin: BASE_URL },
     data: { email: "intruder@example.test", password: "correct horse battery staple", name: "Intruder" },
   });
   expect(signUp.ok()).toBe(false);

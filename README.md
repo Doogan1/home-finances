@@ -9,8 +9,18 @@ the build plan is [docs/local-docker-implementation-plan.md](docs/local-docker-i
 This repository currently covers **Task 1** (containerized dev environment),
 **Task 2** (database schema and encrypted token storage), **Task 3** (closed
 household authentication), **Task 4** (connecting a Plaid Sandbox bank and viewing
-balances), **Task 5** (reconnect, disconnect, OAuth support) and **Task 6**
-(manual transaction sync). Nothing here deploys anything or contacts a real bank.
+balances), **Task 5** (reconnect, disconnect, OAuth support), **Task 6** (manual
+transaction sync) and **Task 7** (backup and restore, key rotation, security
+verification, handoff documentation). Nothing here deploys anything or contacts a
+real bank.
+
+| Read this | For |
+| --- | --- |
+| [docs/local-development.md](docs/local-development.md) | day-to-day operation: restarts, tests, **backups and restore**, **encryption-key backup and rotation**, Sandbox testing, **going live**, troubleshooting |
+| [docs/auth.md](docs/auth.md) | sign-in, sessions, CSRF, throttling |
+| [docs/plaid-link.md](docs/plaid-link.md) | connecting, reconnecting, disconnecting and deleting data; OAuth and its **https** redirect requirement |
+| [docs/transaction-sync.md](docs/transaction-sync.md) | how a sync stays all-or-nothing, and how to inspect it |
+| [docs/future-deployment.md](docs/future-deployment.md) | what must be true **before** this is ever hosted (nothing has been deployed or approved) |
 
 ## Prerequisites
 
@@ -57,7 +67,18 @@ docker compose exec app npm run db:migrate         # apply migrations + refresh 
 docker compose exec app npm run db:migrate:dev -- --name describe_the_change   # create a NEW migration
 docker compose exec app npm run auth:bootstrap -- --add-member   # add another person to the household
 docker compose exec app npm run sync                 # list connections; `-- <id>` or `-- --all` to sync transactions
+docker compose exec app npm run keys:rotate           # re-encrypt tokens after a key change (dry run unless --apply)
 docker compose logs -f app
+```
+
+Backups and checks that drive Docker run **on the host** (plain Node, so they work
+from PowerShell):
+
+```bash
+npm run backup                    # verified dump into ./backups (git-ignored, not encrypted)
+npm run restore -- <dump file>    # restores into a NEW separate database; never the live one by default
+npm run test:backup               # backup -> restore round trip on throwaway databases
+npm run verify:image              # build the production image, scan it for secrets, run the browser suite against it
 ```
 
 Browser tests (Playwright) run **on the host** against the running stack:
@@ -137,7 +158,7 @@ In a host-run `.env`, use `127.0.0.1:5433` in place of `db:5432` in `DATABASE_UR
 Plaid access tokens are encrypted before storage with AES-256-GCM (`src/lib/crypto/tokens.ts`). Stored values look like `v1.<keyId>.<nonce>.<ciphertext>.<tag>`. The Item's environment and Plaid Item ID are bound in as authenticated context, so a token copied to another row, or a sandbox token presented as a production one, fails to decrypt. Other code must call `encryptToken` / `decryptToken` and never use crypto primitives directly.
 
 - **Back up `TOKEN_ENCRYPTION_KEY`** (from `.env`) separately from database dumps, in restricted storage. Without it stored tokens are unrecoverable, and with it plus a dump they are readable.
-- **Rotation** is supported by the cipher (a new key encrypts; retired keys still decrypt old data) but not yet wired into configuration or tooling. Until a re-encryption script exists, changing `TOKEN_ENCRYPTION_KEY` makes existing stored tokens undecryptable, and the fix would be to relink the affected connections. This will be completed with the backup/restore work in Task 7.
+- **Rotation** is supported end to end since Task 7: put the new key in `TOKEN_ENCRYPTION_KEY`, the old one in `TOKEN_ENCRYPTION_RETIRED_KEYS`, and run `npm run keys:rotate -- --apply`. **Do not just replace the key**: tokens stored under the old one become unreadable and each bank would have to be reconnected. The steps are in [docs/local-development.md](docs/local-development.md#rotating-the-token-encryption-key).
 
 ### Existing `.env` from Task 1
 
@@ -189,6 +210,16 @@ Full design, guarantees and recovery steps are in [docs/transaction-sync.md](doc
 - **Amounts keep Plaid's sign** (positive = money out) as exact decimals; removed transactions are marked, not deleted; a posted transaction retires its pending twin so a charge is never counted twice.
 - After pulling this change: `docker compose exec app npm run db:migrate`, then **restart the app container** (`docker compose restart app`) so the running dev server picks up the new database client.
 
+## Choices made in Task 7
+
+- **Backups** are verified `pg_dump` files written by tooling on the host (`npm run backup`). They are not encrypted, are git-ignored and excluded from the Docker build, and **never include the encryption key**. Sessions and sign-in counters are left out on purpose. See [docs/local-development.md](docs/local-development.md#backups).
+- **Restore** defaults to a separate new database and refuses to touch the live one unless you pass `--replace-live --confirm <name>` with the app stopped. Even then it builds the replacement on the side and swaps by renaming, keeping the old database as a way back. A real restore of this project's own data exposed one bug (a link attempt that pointed at a session which is deliberately not backed up); it is fixed and has a test.
+- **Key rotation** is wired up (`TOKEN_ENCRYPTION_RETIRED_KEYS`, `npm run keys:rotate`): dry run by default, compare-and-set per token, idempotent, and it reports counts and ids only.
+- **Real banks are a deliberate opt-in.** `PLAID_ENV=production` is refused unless `PLAID_LIVE_OPT_IN=yes` is also set; use a separate database and key for real data ([going live](docs/local-development.md#going-live-real-banks-a-deliberate-opt-in)).
+- **Security verification** is automated: source-tree rules (no client component imports a server-only module, every mutating route is guarded before it does any work, secrets are read from the environment in one file, nothing logs a whole error), cross-household and CSRF tests that discover every route themselves, cacheability and header checks, and a log-leak test. `npm run verify:image` also scans the production image for your secret values and runs the browser suite against it. Every one of these checks was shown to fail when the property it guards was deliberately broken.
+- **Browser hardening headers** (`X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`) are set; a Content-Security-Policy is deliberately not, until one is tested against Plaid Link.
+- **Hosting** is documented as prerequisites only ([docs/future-deployment.md](docs/future-deployment.md)). Nothing was deployed, and the VM's guest-level state was never inspected.
+
 ## Layout
 
 ```text
@@ -213,12 +244,20 @@ src/app/login/, src/app/api/auth/   login page and the Better Auth route handler
 scripts/bootstrap-user.mts          `npm run auth:bootstrap` (hidden password prompt)
 scripts/plaid-sandbox.mts           `npm run plaid:sandbox` (Sandbox-only reconnect helper)
 scripts/sync.mts                    `npm run sync` (same sync service as the button)
+scripts/rotate-token-key.mts        `npm run keys:rotate` (re-encrypt stored tokens under the current key)
+scripts/backup.mjs, restore.mjs     `npm run backup` / `restore` (host-side; helpers in scripts/lib/backup.mjs)
+scripts/verify-production-image.mjs `npm run verify:image`
+docs/                               spec, plan, and the guides listed at the top of this file
 playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)
 tests/                              Vitest unit tests; *.integration.test.ts use a real database
 ```
 
-## Not yet covered
+## Status and limits
 
-Backups and restore, and future deployment prerequisites (Task 7) are still to
-come. There are no webhooks or scheduled syncs. Do not deploy this app or point it at real bank
-accounts until then.
+All seven tasks of the plan are done. Be clear about what that does and does not mean:
+
+- It runs **locally, on Plaid Sandbox**. Real banks are possible only through the deliberate opt-in above, and nothing has been tried against a real institution.
+- It is **not ready to host.** Nothing was deployed and the cloud VM's guest was never inspected (see [docs/future-deployment.md](docs/future-deployment.md) for what must be true first). Do not point an internet-reachable copy at real accounts until that is done.
+- There are no webhooks and no scheduled syncs; transactions sync only when you ask.
+- A real OAuth redirect round trip through a bank was not exercised (Sandbox in a desktop browser uses a pop-up instead).
+- Backups are local and unencrypted; they protect against mistakes, not against losing the computer.

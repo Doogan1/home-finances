@@ -144,7 +144,18 @@ function configuredCipher(): TokenCipher {
   const { tokenEncryption } = getServerConfig();
   return createTokenCipher({
     current: { keyId: tokenEncryption.keyId, key: tokenEncryption.key },
+    // Only for decrypting data not yet re-encrypted after a rotation.
+    retired: tokenEncryption.retired,
   });
+}
+
+/**
+ * The key id a stored token was encrypted under, or null if it is not in the
+ * expected format. Reads the label only; nothing is decrypted or validated.
+ */
+export function tokenKeyId(stored: string): string | null {
+  const parts = stored.split(".");
+  return parts.length === 5 && parts[0] === VERSION && KEY_ID_PATTERN.test(parts[1]) ? parts[1] : null;
 }
 
 /** Encrypt with the configured key. `context` is e.g. `plaidItemTokenContext(...)`. */

@@ -45,7 +45,10 @@ try {
     console.log(
       changed.length === 0
         ? "\nIts content is identical to the live database."
-        : `\nDiffers from the live database in: ${changed.join(", ")} (expected if the backup is older).`,
+        : `\nDiffers from the live database in: ${changed.join(", ")}` +
+          (changed.join() === "LinkAttempt"
+            ? " (link attempts no longer point at the sessions that started them; sessions are not backed up, so this is expected)."
+            : " (expected if the backup is older than the live data)."),
     );
     console.log(`\nThe live database was not touched. Remove this copy when done:`);
     console.log(`  docker compose exec db sh -c 'dropdb -U "$POSTGRES_USER" ${result.database}'`);

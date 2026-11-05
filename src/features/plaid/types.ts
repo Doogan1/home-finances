@@ -87,6 +87,13 @@ export interface PlaidGateway {
     historyDays: number;
     redirectUri?: string;
     accessToken?: string;
+    /**
+     * Update mode only: show Plaid's account-selection step so the person can add
+     * or change which accounts are shared. This is how accounts are added to an
+     * existing connection; linking the same bank again as a new connection would
+     * use another trial slot and, at PNC, invalidates the first connection.
+     */
+    selectAccounts?: boolean;
   }): Promise<{
     linkToken: string;
     expiration: Date | null;

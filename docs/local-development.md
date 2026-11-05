@@ -18,6 +18,8 @@ VM, see [future-deployment.md](future-deployment.md).
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |
 | Rotate the token-encryption key | [see below](#rotating-the-token-encryption-key) |
+| Use https locally (needed for real OAuth banks) | [local-https.md](local-https.md) |
+| Check readiness for a real bank | `docker compose exec app npm run preflight` |
 | Run every check | [see below](#checks-and-tests) |
 
 ## What survives a restart
@@ -60,7 +62,9 @@ server keeps the database client it started with and fails with "unknown field".
 | `npm run verify:image` | host | builds the production image, scans it for your secrets, checks it is not root, runs the whole browser suite against it |
 | `docker compose exec app npm run build` | container | the production build compiles |
 
-No automated test contacts Plaid or a bank. Browser tests create a labelled
+No automated test calls Plaid's API or a bank. (Pages that include Plaid Link load
+Plaid's Link script from Plaid's servers in the browser tests, as any browser would;
+that script can also report its own errors to Plaid.) Browser tests create a labelled
 throwaway user in the development database and delete it afterwards.
 
 ## Backups
@@ -202,38 +206,63 @@ institution. With your Sandbox keys in `.env` (`PLAID_CLIENT_ID`, `PLAID_SECRET`
 ## Going live (real banks): a deliberate opt-in
 
 Nothing in this repository links a real bank unless you do all of this on
-purpose. It is never required for development or tests.
+purpose. It is never required for development or tests. Work through it in
+order; `npm run preflight` (below) checks the parts it can.
 
-1. **Check your Plaid access first**: that your dashboard has production (or
-   trial) access to Transactions, which institutions you need (some require OAuth
-   and an approved, registered **https** redirect address), the quotas, and the
-   billing terms. Removing an Item with `/item/remove` is what ends billing.
-2. **Use a separate database for real data.** Do not mix it with Sandbox: use a
+1. **Know what your Plaid access allows.** On the Dashboard: Production (trial)
+   access is enabled for Transactions; how many Items the trial gives you (Plaid's
+   billing page says 10, and that **removing an Item does not free a slot**, so
+   every real link counts, including ones you later disconnect); and, for the bank
+   you want (for example PNC), that it shows as available on the OAuth institutions
+   page. Most large US banks, PNC included, use OAuth.
+2. **Get an https redirect address working.** OAuth banks need one, and Plaid
+   allows plain `http://localhost` only in Sandbox. The simplest route is
+   [local https](local-https.md): `https://localhost:3000/plaid/oauth`, registered
+   in the Dashboard. Try it with a Sandbox link first (it validates the address with
+   Plaid). Hosting somewhere else is only needed if you later want the app reachable
+   from outside ([future-deployment.md](future-deployment.md)).
+3. **Use a separate database for real data.** Do not mix it with Sandbox: use a
    separate Compose project (`docker compose -p home-finances-live ...`) or at
    least a separate database, so there is a separate volume and separate backups.
    Every query is already filtered by environment, and tokens are bound to their
    environment when encrypted, but separation is the real safeguard.
-3. **Use a different `TOKEN_ENCRYPTION_KEY`** for the live environment.
-4. Put production credentials in that environment's `.env`:
+4. **Use a different `TOKEN_ENCRYPTION_KEY`** for the live environment, and back it
+   up separately before linking anything.
+5. Put production credentials in that environment's `.env`:
 
    ```text
    PLAID_ENV=production
    PLAID_CLIENT_ID=<production client id>
    PLAID_SECRET=<production secret>
    PLAID_LIVE_OPT_IN=yes
+   APP_URL=https://localhost:3000
+   PLAID_REDIRECT_URI=https://localhost:3000/plaid/oauth
    ```
 
    The app **refuses to start with `PLAID_ENV=production` unless
    `PLAID_LIVE_OPT_IN=yes` is also set**, so a stray edit or a copied `.env`
    cannot switch it. The Connections page then shows a prominent "Production:
    real bank data" notice.
-5. Linking a real account is still your own explicit click; the app never does it
-   for you.
-6. Take a backup and a key backup **before** the first real link, and test a
-   restore.
+6. **Run the checklist:** `docker compose exec app npm run preflight`. It is
+   read-only and contacts no one. It checks what it can see (https, a matching
+   redirect address, Sandbox data kept apart, a restricted database role, a recent
+   backup, an unfinished key rotation, how many trial Items you have used) and lists
+   what only you can check (disk encryption, that secrets are not cloud-synced,
+   that the key is backed up, the Dashboard settings). In Sandbox mode it shows
+   what is still missing as warnings; in production a failure exits non-zero.
+7. **Take a backup and test a restore** before the first real link.
+8. **Link one bank, choosing every account you want the first time.** Later, add or
+   drop accounts with *Add or change accounts* on the Connections page. Do **not**
+   link the same bank again to do that: it uses another trial slot and, at PNC,
+   invalidates the first connection (Plaid's OAuth page: a new link with the same
+   credentials and different accounts invalidates the existing PNC Item).
+9. PNC specifics from Plaid's docs: consent must be refreshed once a year
+   (use *Reconnect*; there are no webhooks yet, so the app only notices when you
+   refresh or sync).
 
-Do not point a deployed or internet-reachable copy at real accounts until the
-items in [future-deployment.md](future-deployment.md) are done.
+The first real link is always your own explicit click; the app never does it for
+you. Do not point an internet-reachable copy at real accounts until the items in
+[future-deployment.md](future-deployment.md) are done.
 
 ## Troubleshooting
 

@@ -197,6 +197,8 @@ Keeping the callback address private: the dev server's request log ignores
 logs it, and the page is served with `Referrer-Policy: no-referrer` so the
 address is not sent to other sites.
 
+**Redirect addresses in production (from Plaid's docs).** They must be https (Sandbox alone allows `http://localhost`), registered in the Dashboard, and have no query string or fragment. The docs do not say whether `https://localhost` is accepted in production; the Dashboard accepted it when tried, and [local-https.md](local-https.md) shows how to serve it. Trial plans can use OAuth institutions, and PNC and Chase have extra requirements that do not apply on a trial. Plaid does not document, in the pages checked, whether desktop browsers use a popup or a full-page redirect in production, so the return page handles both: in the main window it resumes the attempt; if it is loaded in a popup it does nothing and leaves the attempt to the window that opened it.
+
 **What has and has not been exercised.** Per Plaid, Sandbox in a desktop browser
 opens Link in a pop-up, so the redirect page is not used; it is used by webviews
 and mobile browsers. The page is covered by automated tests (guards, expiry,
@@ -205,6 +207,16 @@ round trip needs Plaid's *Platypus OAuth Bank* with a simulated webview user
 agent, and real banks need an `https` address. This was not tried against Plaid.
 A public tunnel is never opened by the app or its tools; if a real bank needs
 one, that is a decision for you to make.
+
+## Adding or changing accounts
+
+*Add or change accounts* (Connections page) opens Link in update mode with account
+selection switched on (`update.account_selection_enabled`). It is the supported way to
+share more accounts, or fewer, with an existing connection. Linking the same bank
+again as a new connection is the wrong way: it uses another trial slot, and at PNC
+it invalidates the first connection. After it completes, the account list is
+re-fetched; accounts no longer shared appear as "Not reported by bank" with their
+history kept.
 
 ## Not yet covered
 

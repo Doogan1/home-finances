@@ -69,6 +69,20 @@ describe("createReconnectAttempt (update mode)", () => {
     });
   });
 
+  it("can ask Plaid to let the person add or change accounts, so a bank is never linked twice to do it", async () => {
+    const person = await seedPerson(owner, "a@example.test");
+    const item = await seedConnection(owner, person.householdId, { status: "ACTIVE" });
+
+    await createReconnectAttempt(deps(), person.householdId, person.sessionId, item.id, { selectAccounts: true });
+    await createReconnectAttempt(deps(), person.householdId, person.sessionId, item.id);
+
+    expect(api.linkTokenCreate.mock.calls[0][0]).toMatchObject({
+      access_token: ACCESS_TOKEN,
+      update: { account_selection_enabled: true },
+    });
+    expect(api.linkTokenCreate.mock.calls[1][0]).not.toHaveProperty("update");
+  });
+
   it("is available for any connection that still has a token, not only a flagged one", async () => {
     const person = await seedPerson(owner, "a@example.test");
     const item = await seedConnection(owner, person.householdId, { status: "ACTIVE" });

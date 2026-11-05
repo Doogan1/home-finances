@@ -1,0 +1,21 @@
+# TLS front door for local HTTPS (see compose.https.yaml and docs/local-https.md).
+#
+# Terminates HTTPS with the certificate you made (certs/localhost.pem) and hands
+# plain HTTP to the app over the private Compose network. Nothing else is served.
+
+{
+	# Never fetch or manage certificates automatically, never open port 80, and
+	# keep the admin endpoint off: this proxy does exactly one thing.
+	auto_https off
+	admin off
+}
+
+https://localhost:{$APP_PORT} {
+	tls /certs/localhost.pem /certs/localhost-key.pem
+
+	# No HSTS on purpose: browsers apply it to the whole "localhost" name (every
+	# port), which would break plain-http development on other ports.
+	reverse_proxy app:3000
+
+	header -Server
+}

@@ -24,10 +24,16 @@ type Notice = { tone: "ok" | "warn" | "error"; text: string } | null;
  */
 export function PlaidLinkButton({
   startUrl = "/api/plaid/link-token",
+  startBody = {},
   label = "Connect a bank",
+  doneText = "Connected.",
 }: {
   startUrl?: string;
+  /** Sent when starting; for a reconnect, `{ selectAccounts: true }` adds account selection. */
+  startBody?: Record<string, boolean>;
   label?: string;
+  /** Shown when the bank finished and its accounts loaded. */
+  doneText?: string;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -57,14 +63,14 @@ export function PlaidLinkButton({
       if (!result.ok) return setNotice({ tone: "error", text: result.message });
       setNotice(
         result.data.status === "ACTIVE"
-          ? { tone: "ok", text: "Connected." }
+          ? { tone: "ok", text: doneText }
           : result.data.status === "LOGIN_REQUIRED"
             ? { tone: "warn", text: "The bank still needs a sign-in. Try Reconnect again." }
             : { tone: "warn", text: "Connected, but accounts could not be loaded yet. Use “Fetch accounts”." },
       );
       router.refresh();
     },
-    [reset, router],
+    [doneText, reset, router],
   );
 
   const onExit = useCallback<PlaidLinkOnExit>(
@@ -92,7 +98,7 @@ export function PlaidLinkButton({
   async function start() {
     setNotice(null);
     setPhase("starting");
-    const result = await postJson<{ attemptId: string; linkToken: string }>(startUrl, {});
+    const result = await postJson<{ attemptId: string; linkToken: string }>(startUrl, startBody);
     if (!result.ok) {
       reset();
       return setNotice({ tone: "error", text: result.message });

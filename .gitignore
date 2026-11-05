@@ -55,3 +55,6 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /blob-report/
+
+# local HTTPS certificate and key (private; see docs/local-https.md)
+/certs/

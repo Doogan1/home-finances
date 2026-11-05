@@ -95,12 +95,14 @@ const routes = {
   deleteHistory: async () => (await import("@/app/api/plaid/connections/[id]/delete-history/route")).POST,
 };
 const withId = (id: string) => ({ params: Promise.resolve({ id }) });
+// Each route takes its own body; sending another route's body is (rightly) a 400.
+const bodyFor = (name: "reconnect" | "disconnect" | "deleteHistory") => (name === "deleteHistory" ? { confirm: "DELETE" } : {});
 
 describe.each(["reconnect", "disconnect", "deleteHistory"] as const)("POST …/connections/[id]/%s: guards", (name) => {
   it("refuses an anonymous caller before any call to Plaid", async () => {
     const POST = await routes[name]();
 
-    const response = await POST(post({ confirm: "DELETE" }), withId(crypto.randomUUID()));
+    const response = await POST(post(bodyFor(name)), withId(crypto.randomUUID()));
 
     expect(response.status).toBe(401);
     expect(api.linkTokenCreate).not.toHaveBeenCalled();
@@ -113,7 +115,7 @@ describe.each(["reconnect", "disconnect", "deleteHistory"] as const)("POST …/c
     const POST = await routes[name]();
 
     for (const origin of ["https://evil.example", null]) {
-      const response = await POST(post({ confirm: "DELETE" }, origin), withId(item.id));
+      const response = await POST(post(bodyFor(name), origin), withId(item.id));
       expect(response.status).toBe(403);
     }
     expect(api.itemRemove).not.toHaveBeenCalled();
@@ -132,7 +134,7 @@ describe.each(["reconnect", "disconnect", "deleteHistory"] as const)("POST …/c
     const POST = await routes[name]();
 
     for (const id of ["nope", crypto.randomUUID(), theirs.id]) {
-      const response = await POST(post({ confirm: "DELETE" }), withId(id));
+      const response = await POST(post(bodyFor(name)), withId(id));
       expect(response.status).toBe(404);
     }
     expect(api.itemRemove).not.toHaveBeenCalled();
@@ -154,6 +156,30 @@ describe("POST …/reconnect", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(body.linkToken).toBe(LINK_TOKEN);
     expect((await owner.linkAttempt.findUniqueOrThrow({ where: { id: body.attemptId } })).kind).toBe("RECONNECT");
+  });
+
+  it("accepts an optional selectAccounts flag and passes it through", async () => {
+    const { householdId } = await signIn();
+    const item = await seedConnection(owner, householdId);
+    const POST = await routes.reconnect();
+
+    expect((await POST(post({ selectAccounts: true }), withId(item.id))).status).toBe(200);
+    expect(api.linkTokenCreate.mock.calls[0][0]).toMatchObject({ update: { account_selection_enabled: true } });
+    expect((await POST(post({}), withId(item.id))).status).toBe(200);
+    expect(api.linkTokenCreate.mock.calls[1][0]).not.toHaveProperty("update");
+  });
+
+  it.each([
+    ["a non-boolean flag", { selectAccounts: "yes" }],
+    ["an unknown field", { selectAccounts: true, householdId: "x" }],
+    ["not json", "{nope"],
+  ])("rejects %s before calling Plaid", async (_name, body) => {
+    const { householdId } = await signIn();
+    const item = await seedConnection(owner, householdId);
+    const POST = await routes.reconnect();
+
+    expect((await POST(post(body), withId(item.id))).status).toBe(400);
+    expect(api.linkTokenCreate).not.toHaveBeenCalled();
   });
 
   it("answers 503 when Plaid is not configured", async () => {

@@ -1,0 +1,31 @@
+# Opt-in local HTTPS: a small TLS proxy in front of the app.
+#
+#   docker compose -f compose.yaml -f compose.https.yaml up -d
+#
+# Plaid requires an https redirect address for real (OAuth) banks, so this lets
+# you use https://localhost:<port>/plaid/oauth. Setup, including making the
+# certificate with mkcert, is in docs/local-https.md. In your .env set
+#   APP_URL=https://localhost:3000         (the port you publish; the login origin check compares it exactly)
+#   PLAID_REDIRECT_URI=https://localhost:3000/plaid/oauth     (and register this exact address in the Plaid Dashboard)
+#
+# With this file the app itself is NOT published to your computer at all: the
+# only way in is the HTTPS proxy, on 127.0.0.1 only.
+
+services:
+  app:
+    ports: !reset []
+
+  proxy:
+    image: caddy:2.11.8-alpine
+    restart: unless-stopped
+    environment:
+      APP_PORT: ${APP_PORT:-3000}
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:${APP_PORT:-3000}"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # localhost.pem and localhost-key.pem: private files, git- and Docker-ignored.
+      - ./certs:/certs:ro
+    depends_on:
+      app:
+        condition: service_healthy

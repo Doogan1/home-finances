@@ -49,6 +49,29 @@ test("Reconnect asks the server for an update-mode token and reports a failure s
   await expect(card(page, "E2E Needs Sign-in Bank").getByRole("button", { name: "Reconnect" })).toBeEnabled();
 });
 
+test("a connected bank offers to add or change accounts without linking it again", async ({ page }) => {
+  await signInViaApi(page);
+  let sentBody = "";
+  await page.route("**/api/plaid/connections/*/reconnect", (route) => {
+    sentBody = route.request().postData() ?? "";
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "unavailable", message: "Plaid or the bank is temporarily unavailable. Try again later." }),
+    });
+  });
+  await page.goto("/connections");
+  const main = card(page, "First Platypus Bank (E2E)");
+
+  await main.getByRole("button", { name: "Add or change accounts" }).click();
+
+  await expect(main.getByRole("status")).toHaveText(/temporarily unavailable/);
+  expect(JSON.parse(sentBody)).toEqual({ selectAccounts: true });
+  // Plain Reconnect does not ask for account selection.
+  await main.getByRole("button", { name: "Reconnect" }).click();
+  await expect.poll(() => sentBody).toBe("{}");
+});
+
 test("Disconnect explains what it does and can be cancelled without any change", async ({ page }) => {
   await signInViaApi(page);
   await page.goto("/connections");
@@ -110,7 +133,7 @@ test("lifecycle routes refuse anonymous, cross-site and malformed calls", async 
   for (const action of ["reconnect", "disconnect", "delete-history"]) {
     const anonymous = await request.post(`/api/plaid/connections/${id}/${action}`, {
       headers: { origin: BASE_URL },
-      data: { confirm: "DELETE" },
+      data: action === "delete-history" ? { confirm: "DELETE" } : {},
     });
     expect(anonymous.status(), `${action} anonymous`).toBe(401);
   }
@@ -119,13 +142,13 @@ test("lifecycle routes refuse anonymous, cross-site and malformed calls", async 
   for (const action of ["reconnect", "disconnect", "delete-history"]) {
     const crossSite = await page.request.post(`/api/plaid/connections/${id}/${action}`, {
       headers: { origin: "https://evil.example" },
-      data: { confirm: "DELETE" },
+      data: action === "delete-history" ? { confirm: "DELETE" } : {},
     });
     expect(crossSite.status(), `${action} cross-site`).toBe(403);
 
     const unknown = await page.request.post(`/api/plaid/connections/${id}/${action}`, {
       headers: { origin: BASE_URL },
-      data: { confirm: "DELETE" },
+      data: action === "delete-history" ? { confirm: "DELETE" } : {},
     });
     expect(unknown.status(), `${action} unknown id`).toBe(404);
   }
@@ -157,6 +180,68 @@ test.describe("the OAuth return page", () => {
     const response = await page.goto("/plaid/oauth?oauth_state_id=synthetic");
 
     expect(response?.headers()["referrer-policy"]).toBe("no-referrer");
+  });
+
+  test("does nothing when it is loaded inside a popup, leaving the attempt to the original window", async ({ page, context }) => {
+    // Plaid's docs do not say whether desktop OAuth lands here in a popup or in the
+    // main window. If it is a popup, this page must not resume the attempt itself:
+    // the window that opened it is still waiting to finish it.
+    await signInViaApi(page);
+    const resumeRequests: string[] = [];
+    context.on("request", (request) => {
+      if (request.url().includes("/api/plaid/oauth/resume")) resumeRequests.push(request.url());
+    });
+    await context.addInitScript(() => sessionStorage.setItem("hf.plaid.attempt", "00000000-0000-4000-8000-000000000000"));
+    await page.goto("/connections");
+
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.evaluate(() => {
+        window.open("/plaid/oauth?oauth_state_id=synthetic");
+      }),
+    ]);
+    const popupErrors: string[] = [];
+    popup.on("console", (message) => {
+      if (message.type() === "error") popupErrors.push(message.text());
+    });
+    await popup.waitForLoadState("networkidle");
+    // Give Plaid Link's own script time to load; initialising it here would
+    // overwrite the message and clear the attempt (this happened in production).
+    await popup.waitForTimeout(3000);
+
+    await expect(popup.getByText(/can close this window/i)).toBeVisible();
+    await expect(popup.getByText(/Cancelled/)).toHaveCount(0);
+    expect(popupErrors.filter((text) => /initializing Plaid Link/i.test(text))).toEqual([]);
+    expect(resumeRequests).toEqual([]);
+    // The remembered attempt is left alone for the window that is still using it.
+    expect(await popup.evaluate(() => sessionStorage.getItem("hf.plaid.attempt"))).not.toBeNull();
+  });
+
+  test("keeps waiting for its link token instead of starting Plaid Link without one", async ({ page }) => {
+    await signInViaApi(page);
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    await page.route("**/api/plaid/oauth/resume", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 4000)); // a slow server
+      await route.fulfill({
+        status: 410,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "attempt_expired", message: "That connection attempt expired. Start again." }),
+      });
+    });
+    await page.addInitScript(() => sessionStorage.setItem("hf.plaid.attempt", "00000000-0000-4000-8000-000000000000"));
+    await page.goto("/plaid/oauth?oauth_state_id=synthetic");
+
+    // Plaid Link's script loads while we wait; it must not be started with no token.
+    await page.waitForTimeout(2500);
+    await expect(page.getByText("Resuming your bank connection")).toBeVisible();
+    await expect(page.getByText(/Cancelled/)).toHaveCount(0);
+    expect(errors.filter((text) => /initializing Plaid Link/i.test(text))).toEqual([]);
+
+    // The server's answer is then shown as it is.
+    await expect(page.locator("main").getByRole("alert")).toHaveText("That connection attempt expired. Start again.");
   });
 
   test("reports a server refusal instead of hanging", async ({ page }) => {

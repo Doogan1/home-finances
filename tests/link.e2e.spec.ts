@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { BASE_URL, SENTINEL_CIPHERTEXT_FRAGMENT, inAppContainer, signInViaApi } from "./e2e/helpers";
 
 // Real browser against the running app, using the synthetic bank connection that
-// tests/e2e/global-setup.ts seeds for the throwaway user. Plaid is never called:
+// tests/e2e/global-setup.ts seeds for the throwaway user. Plaid's API is never called
+// (the browser does fetch Plaid Link's script from Plaid's servers, as any page with Link does):
 // the Connect button's request is intercepted, and "refresh" is never clicked.
 
 test.beforeAll(() => {

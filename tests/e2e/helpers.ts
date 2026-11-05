@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 
-const repoRoot = path.resolve(__dirname, "..", "..");
+// The folder whose Compose project the tests drive. Normally this repository;
+// E2E_COMPOSE_DIR points them at another copy (used to test the HTTPS setup in
+// an isolated project without touching the real stack).
+const repoRoot = process.env.E2E_COMPOSE_DIR ?? path.resolve(__dirname, "..", "..");
 export const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
 /** Run the e2e-user script inside the app container (the only thing that can reach the database). */

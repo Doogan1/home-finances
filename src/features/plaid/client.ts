@@ -179,7 +179,7 @@ const UPDATE_STATUSES: Record<string, SyncUpdateStatus> = {
 
 export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
   return {
-    async createLinkToken({ clientUserId, historyDays, redirectUri, accessToken }) {
+    async createLinkToken({ clientUserId, historyDays, redirectUri, accessToken, selectAccounts }) {
       const data = await call(() =>
         api.linkTokenCreate({
           client_name: "Home Finances",
@@ -191,7 +191,10 @@ export function createPlaidGateway(api: PlaidApiMethods): PlaidGateway {
           ...(redirectUri ? { redirect_uri: redirectUri } : {}),
           ...(accessToken
             ? // Update mode: the Item already has its products and history.
-              { access_token: accessToken }
+              {
+                access_token: accessToken,
+                ...(selectAccounts ? { update: { account_selection_enabled: true } } : {}),
+              }
             : {
                 // Transactions only. Auth is not added just to read balances.
                 products: [Products.Transactions],

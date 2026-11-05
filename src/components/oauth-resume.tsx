@@ -8,6 +8,7 @@ import { attemptMemory, postJson } from "./plaid-api";
 
 type State =
   | { phase: "loading" }
+  | { phase: "popup" }
   | { phase: "linking" }
   | { phase: "saving" }
   | { phase: "failed"; message: string };
@@ -23,6 +24,12 @@ const noHref = () => null;
  * with the SAME link token the attempt started with (fetched from our server,
  * which only gives it to the browser session that started the attempt) and the
  * full return address, so Link can pick up where the bank left off.
+ *
+ * It does this only when it is the main window. If another window opened this
+ * one (a popup), that window is still running the attempt and Plaid expects the
+ * redirect page to simply load; resuming here as well could finish the attempt
+ * twice, so it does nothing. (Plaid's docs do not say which of the two a desktop
+ * browser uses in production, so both are handled.)
  */
 export function OAuthResume() {
   const router = useRouter();
@@ -33,6 +40,7 @@ export function OAuthResume() {
 
   useEffect(() => {
     async function resume() {
+      if (window.opener !== null) return setState({ phase: "popup" });
       const id = attemptMemory.read();
       if (!id) {
         return setState({
@@ -76,9 +84,14 @@ export function OAuthResume() {
     });
   }, []);
 
+  // react-plaid-link starts Link as soon as it has EITHER a token OR a redirect
+  // address. The address is known from the first render but the token only arrives
+  // after a request, so passing the address early made Link start with no token,
+  // fail, and trigger onExit ("Cancelled", attempt forgotten), while a popup, which
+  // never gets a token, was left in the same state. Give it both together or neither.
   const { open, ready } = usePlaidLink({
     token: linkToken,
-    receivedRedirectUri: receivedRedirectUri ?? undefined,
+    receivedRedirectUri: linkToken && receivedRedirectUri ? receivedRedirectUri : undefined,
     onSuccess,
     onExit,
   });
@@ -87,6 +100,9 @@ export function OAuthResume() {
     if (linkToken && ready && receivedRedirectUri) open();
   }, [linkToken, ready, receivedRedirectUri, open]);
 
+  if (state.phase === "popup") {
+    return <p className="muted">You can close this window. Your bank connection is finishing in the original window.</p>;
+  }
   if (state.phase === "failed") {
     return (
       <>

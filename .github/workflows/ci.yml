@@ -1,5 +1,5 @@
 # Continuous checks. Everything here uses synthetic data and fake credentials:
-# no job contacts Plaid, a bank, or any real service, and no repository secret is
+# no job calls Plaid's API, a bank, or any real service, and no repository secret is
 # used. Not run from the author's machine (it needs GitHub Actions); the same
 # steps are what `docker compose exec app npm run ...` runs locally.
 #

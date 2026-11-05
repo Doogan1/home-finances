@@ -26,12 +26,16 @@ const clock = (deps: LinkDeps) => (deps.now ?? (() => new Date()))();
  * Starts Plaid Link in update mode for an existing connection, using its stored
  * access token. Available for any connection that still has a token (not only a
  * flagged one), since consent can be refreshed before it lapses.
+ *
+ * `selectAccounts` adds Plaid's account-selection step, the supported way to add
+ * accounts to (or drop them from) an existing connection.
  */
 export async function createReconnectAttempt(
   deps: LinkDeps,
   householdId: string,
   sessionId: string,
   connectionId: string,
+  options: { selectAccounts?: boolean } = {},
 ): Promise<LinkAttemptStart> {
   const { db, tokens, environment } = deps;
   const item = await db.plaidItem.findFirst({ where: { id: connectionId, householdId, environment } });
@@ -50,6 +54,7 @@ export async function createReconnectAttempt(
     householdId,
     sessionId,
     connection: { id: item.id, accessToken },
+    selectAccounts: options.selectAccounts,
   });
 }
 

@@ -23,6 +23,7 @@
     "verify:image": "node scripts/verify-production-image.mjs",
     "restore": "node scripts/restore.mjs",
     "test:backup": "vitest run --config vitest.docker.config.mts",
+    "preflight": "NODE_OPTIONS=--conditions=react-server tsx scripts/preflight-live.mts",
     "keys:rotate": "NODE_OPTIONS=--conditions=react-server tsx scripts/rotate-token-key.mts"
   },
   "dependencies": {

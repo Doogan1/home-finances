@@ -136,6 +136,8 @@ function post(body: unknown = {}, origin: string | null = BASE_URL): Request {
   });
 }
 const withId = (id: string) => ({ params: Promise.resolve({ id }) });
+// The body each route expects (a wrong body is a 400, which is not what these tests probe).
+const bodyForRoute = (file: string) => (file.includes("delete-history") ? { confirm: "DELETE" } : {});
 
 // Every route module under /api/plaid, found from the file system so that a
 // route added later is covered automatically.
@@ -226,10 +228,10 @@ describe("one household can never reach another's data", () => {
     for (const [file, load] of idRoutes) {
       const { POST } = await load();
       as(b);
-      const foreign = await POST(post({ confirm: "DELETE" }), withId(a.itemId));
+      const foreign = await POST(post(bodyForRoute(file)), withId(a.itemId));
       expect(foreign.status, `${file} (other household)`).toBe(404);
       as(null);
-      const anonymous = await POST(post({ confirm: "DELETE" }), withId(a.itemId));
+      const anonymous = await POST(post(bodyForRoute(file)), withId(a.itemId));
       expect(anonymous.status, `${file} (anonymous)`).toBe(401);
     }
     expect(plaidCalls()).toBe(0);

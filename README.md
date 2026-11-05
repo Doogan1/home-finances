@@ -20,6 +20,7 @@ real bank.
 | [docs/auth.md](docs/auth.md) | sign-in, sessions, CSRF, throttling |
 | [docs/plaid-link.md](docs/plaid-link.md) | connecting, reconnecting, disconnecting and deleting data; OAuth and its **https** redirect requirement |
 | [docs/transaction-sync.md](docs/transaction-sync.md) | how a sync stays all-or-nothing, and how to inspect it |
+| [docs/local-https.md](docs/local-https.md) | serving the app over https on your own computer (required for real OAuth banks) |
 | [docs/future-deployment.md](docs/future-deployment.md) | what must be true **before** this is ever hosted (nothing has been deployed or approved) |
 
 ## Prerequisites
@@ -68,6 +69,7 @@ docker compose exec app npm run db:migrate:dev -- --name describe_the_change   #
 docker compose exec app npm run auth:bootstrap -- --add-member   # add another person to the household
 docker compose exec app npm run sync                 # list connections; `-- <id>` or `-- --all` to sync transactions
 docker compose exec app npm run keys:rotate           # re-encrypt tokens after a key change (dry run unless --apply)
+docker compose exec app npm run preflight             # read-only checklist for linking a real bank
 docker compose logs -f app
 ```
 
@@ -186,7 +188,7 @@ The Plaid flow, what is stored, the protections and the recovery steps are in
 - **plaid 49.0.0** (official Node SDK) and **react-plaid-link 5.0.0**, both pinned. All SDK access is in `src/features/plaid/client.ts`, which reduces SDK errors (they embed the request, including secrets) to a category plus Plaid's error code and request id.
 - Link is requested for **Transactions only, 90 days**. Balances come from `/accounts/get` and are shown with the time they were observed. Nothing calls Plaid when a page is viewed; fetching is an explicit click.
 - A public token is exchanged **once**: the attempt is claimed atomically, and any uncertain outcome becomes `NEEDS_RECONCILIATION` instead of a retry.
-- Browser tests never contact Plaid. The real Link flow is a manual Sandbox check; see the end of docs/plaid-link.md.
+- Browser tests never call Plaid's API or any bank (the pages that include Plaid Link do load Plaid's Link script from Plaid's servers, as any browser would). The real Link flow is a manual Sandbox check; see the end of docs/plaid-link.md.
 - Dev dependency refresh: after pulling this change, rebuild the dependency volume (see "Where things live") and run `docker compose exec app npm run db:migrate`.
 
 ## Choices made in Task 5
@@ -247,6 +249,8 @@ scripts/sync.mts                    `npm run sync` (same sync service as the but
 scripts/rotate-token-key.mts        `npm run keys:rotate` (re-encrypt stored tokens under the current key)
 scripts/backup.mjs, restore.mjs     `npm run backup` / `restore` (host-side; helpers in scripts/lib/backup.mjs)
 scripts/verify-production-image.mjs `npm run verify:image`
+scripts/preflight-live.mts          `npm run preflight`
+compose.https.yaml, docker/caddy/   opt-in local https (a TLS proxy); see docs/local-https.md
 docs/                               spec, plan, and the guides listed at the top of this file
 playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)
 tests/                              Vitest unit tests; *.integration.test.ts use a real database

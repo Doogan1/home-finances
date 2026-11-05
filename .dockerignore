@@ -17,3 +17,4 @@ src/generated
 test-results
 playwright-report
 blob-report
+certs

@@ -65,6 +65,24 @@ describe("createLinkToken options", () => {
   });
 });
 
+describe("account selection in update mode", () => {
+  it("lets the person add or change accounts only when asked, and only for an existing connection", async () => {
+    const { api, gateway } = gatewayWith();
+
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, accessToken: ACCESS_TOKEN, selectAccounts: true });
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, accessToken: ACCESS_TOKEN });
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, accessToken: ACCESS_TOKEN, selectAccounts: false });
+    // A brand-new connection already asks which accounts to share; the option does not apply.
+    await gateway.createLinkToken({ clientUserId: "h", historyDays: 90, selectAccounts: true });
+
+    const requests = api.linkTokenCreate.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    expect(requests[0]).toMatchObject({ update: { account_selection_enabled: true } });
+    expect(requests[1]).not.toHaveProperty("update");
+    expect(requests[2]).not.toHaveProperty("update");
+    expect(requests[3]).not.toHaveProperty("update");
+  });
+});
+
 describe("exchangePublicToken", () => {
   it("returns the access token and Plaid's item id", async () => {
     const { gateway } = gatewayWith();

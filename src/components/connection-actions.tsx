@@ -118,6 +118,16 @@ export function ConnectionActions({
           {plaidConfigured && (
             <PlaidLinkButton startUrl={`/api/plaid/connections/${connectionId}/reconnect`} label="Reconnect" />
           )}
+          {plaidConfigured && status === "ACTIVE" && (
+            // The supported way to add (or drop) accounts. Linking the bank again as a
+            // new connection would use another trial slot and, at PNC, invalidate this one.
+            <PlaidLinkButton
+              startUrl={`/api/plaid/connections/${connectionId}/reconnect`}
+              startBody={{ selectAccounts: true }}
+              label="Add or change accounts"
+              doneText="Accounts updated."
+            />
+          )}
           <button type="button" onClick={() => open("disconnect")}>
             Disconnect…
           </button>

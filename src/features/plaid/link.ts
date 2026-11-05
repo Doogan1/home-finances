@@ -69,6 +69,8 @@ export async function beginAttempt(
     sessionId: string;
     /** Reconnect only: the connection being repaired, and its decrypted access token. */
     connection?: { id: string; accessToken: string };
+    /** Reconnect only: let the person add or change the shared accounts. */
+    selectAccounts?: boolean;
   },
 ): Promise<LinkAttemptStart> {
   const { db, plaid, tokens, redirectUri } = deps;
@@ -92,6 +94,7 @@ export async function beginAttempt(
       historyDays: REQUESTED_HISTORY_DAYS,
       redirectUri: redirectUri ?? undefined,
       accessToken: input.connection?.accessToken,
+      selectAccounts: input.selectAccounts,
     });
     if (redirectUri) {
       // Only needed if the bank sends the person away (OAuth): the return page

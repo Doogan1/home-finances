@@ -70,7 +70,7 @@ export const recordBalancesInput = z
     entries: z
       .array(z.strictObject({ accountId: z.uuid(), balance: money(true) }))
       .min(1)
-      .max(50),
+      .max(40),
   })
   .refine((input) => new Set(input.entries.map((e) => e.accountId)).size === input.entries.length, "An account appears twice")
   .transform((input) => ({ ...input, note: input.note ? input.note : null }));

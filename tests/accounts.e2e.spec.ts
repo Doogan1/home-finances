@@ -26,8 +26,11 @@ test("add an account by hand, record its balance, then archive it", async ({ pag
 
   await page.getByRole("link", { name: "Update balances" }).first().click();
   await expect(page).toHaveURL(/\/accounts\/balances$/);
-  // Plaid-linked accounts are not offered here.
-  await expect(page.getByText("E2E Checking", { exact: true })).toHaveCount(0);
+  // Plaid-linked accounts are listed read-only: no balance input.
+  const plaidRow = page.getByRole("row", { name: /E2E Checking/ });
+  await expect(plaidRow).toBeVisible();
+  await expect(plaidRow).toContainText("Synced from the bank");
+  await expect(plaidRow.getByRole("textbox")).toHaveCount(0);
   await page.getByLabel("New balance for E2E Hand Checking").fill("2,431.07");
   await page.getByRole("button", { name: "Save balances" }).click();
 

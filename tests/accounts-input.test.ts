@@ -59,6 +59,13 @@ describe("recordBalancesInput", () => {
     expect(recordBalancesInput.safeParse({ asOfDate: "2026-11-21", entries: [entry, entry] }).success).toBe(false);
     expect(recordBalancesInput.safeParse({ asOfDate: "2026-11-21", entries: [] }).success).toBe(false);
   });
+
+  it("allows 40 entries and refuses 41", () => {
+    const entries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ accountId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, balance: "1" }));
+    expect(recordBalancesInput.safeParse({ asOfDate: "2026-11-21", entries: entries(40) }).success).toBe(true);
+    expect(recordBalancesInput.safeParse({ asOfDate: "2026-11-21", entries: entries(41) }).success).toBe(false);
+  });
 });
 
 describe("timeZoneInput", () => {

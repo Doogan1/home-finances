@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ACCOUNT_KINDS, type AccountKind } from "@/features/accounts/input";
 import { postJson } from "../post-json";
 
 export function NewAccountForm() {
@@ -44,9 +45,11 @@ export function NewAccountForm() {
       <label>
         Kind
         <select name="kind" defaultValue="checking">
-          <option value="checking">Checking</option>
-          <option value="savings">Savings</option>
-          <option value="credit_card">Credit card</option>
+          {(Object.keys(ACCOUNT_KINDS) as AccountKind[]).map((kind) => (
+            <option key={kind} value={kind}>
+              {ACCOUNT_KINDS[kind].label}
+            </option>
+          ))}
         </select>
       </label>
       <label>

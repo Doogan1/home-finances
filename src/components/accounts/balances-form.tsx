@@ -10,6 +10,8 @@ export type BalanceRow = {
   name: string;
   ownerLabel: string | null;
   owedLabel: boolean;
+  /** Plaid-linked: shown read-only, never submitted. */
+  synced: boolean;
   last: { amount: string; asOf: string } | null;
 };
 
@@ -24,6 +26,7 @@ export function BalancesForm({ rows, today }: { rows: BalanceRow[]; today: strin
     const data = new FormData(event.currentTarget);
     const entries: { accountId: string; balance: string }[] = [];
     for (const row of rows) {
+      if (row.synced) continue;
       const typed = String(data.get(row.id) ?? "").trim();
       if (typed === "") continue;
       // Checked here only to name the field; the server checks again.
@@ -71,7 +74,11 @@ export function BalancesForm({ rows, today }: { rows: BalanceRow[]; today: strin
               <td>{row.ownerLabel ?? ""}</td>
               <td className="num">{row.last ? `${row.last.amount} · ${row.last.asOf}` : "none yet"}</td>
               <td>
-                <input name={row.id} inputMode="decimal" aria-label={`New balance for ${row.name}`} />
+                {row.synced ? (
+                  <span className="muted">Synced from the bank</span>
+                ) : (
+                  <input name={row.id} inputMode="decimal" aria-label={`New balance for ${row.name}`} />
+                )}
               </td>
             </tr>
           ))}

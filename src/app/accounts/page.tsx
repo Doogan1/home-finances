@@ -128,7 +128,7 @@ async function Accounts() {
                           {describeAge(balance.observedAt, now)})
                         </>
                       )}
-                      {stale && <span className="chip chip-warn">May be out of date</span>}
+                      {stale && !archived && <span className="chip chip-warn">May be out of date</span>}
                       {balance.note && <> · {balance.note}</>}
                       {account.unavailableSince && (
                         <>

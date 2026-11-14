@@ -86,15 +86,14 @@ async function expectCode(promise: Promise<unknown>, code: string) {
 
 describe("the account service", () => {
   it("creates hand-entered accounts with sensible forecast defaults", async () => {
-    const spend = await createManualAccount(app, householdId, { name: "Ally Spend", kind: "checking", ownerLabel: "Shared", cushion: "1500" });
-    const card = await createManualAccount(app, householdId, { name: "Amex", kind: "credit_card", ownerLabel: null, cushion: null });
+    await createManualAccount(app, householdId, { name: "Ally Spend", kind: "checking", ownerLabel: "Shared", cushion: "1500" });
+    await createManualAccount(app, householdId, { name: "Amex", kind: "credit_card", ownerLabel: null, cushion: null });
 
     const rows = await owner.account.findMany({ where: { householdId }, orderBy: { name: "asc" } });
     expect(rows.map((r) => [r.name, r.type, r.subtype, r.ownerLabel, r.cushion?.toFixed(), r.includeInForecast])).toEqual([
       ["Ally Spend", "depository", "checking", "Shared", "1500", true],
       ["Amex", "credit", "credit card", null, undefined, false],
     ]);
-    expect([spend.id, card.id]).toHaveLength(2);
   });
 
   it("records several balances as of a date, in one transaction", async () => {

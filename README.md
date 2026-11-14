@@ -14,6 +14,10 @@ transaction sync) and **Task 7** (backup and restore, key rotation, security
 verification, handoff documentation). Nothing here deploys anything or contacts a
 real bank.
 
+You can also add accounts by hand (Accounts → **Add an account**) and record their
+balances on one date (**Update balances**). Hand-entered balances are real financial
+data that exists nowhere else, so run `npm run backup` regularly from now on.
+
 | Read this | For |
 | --- | --- |
 | [docs/local-development.md](docs/local-development.md) | day-to-day operation: restarts, tests, **backups and restore**, **encryption-key backup and rotation**, Sandbox testing, **going live**, troubleshooting |
@@ -238,6 +242,7 @@ src/lib/config.ts                   validated server configuration (server-only)
 src/lib/db.ts                       Prisma client factory and per-process singleton
 src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
 src/features/plaid/                  Plaid gateway (SDK), link flow, account refresh, formatting
+src/features/accounts/               hand-entered accounts and balances (service, input parsing, HTTP helpers); pages in src/app/accounts/
 src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
 src/lib/data/                       household-scoped data access helpers

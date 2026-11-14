@@ -15,6 +15,8 @@ VM, see [future-deployment.md](future-deployment.md).
 | See logs | `docker compose logs -f app` (or `db`) |
 | Apply new migrations | `docker compose exec app npm run db:migrate`, then `docker compose restart app` |
 | Sync transactions | the **Sync now** button, or `docker compose exec app npm run sync -- --all` |
+| Add an account by hand | Accounts → **Add an account** |
+| Record balances by hand | Accounts → **Update balances** (one date, many accounts) |
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |
 | Rotate the token-encryption key | [see below](#rotating-the-token-encryption-key) |

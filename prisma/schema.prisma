@@ -318,6 +318,8 @@ model Rule {
   overrides   OccurrenceOverride[]
 
   @@unique([householdId, importRef])
+  // Lets OccurrenceOverride prove its rule belongs to the same household.
+  @@unique([id, householdId])
   @@index([householdId])
 }
 
@@ -378,7 +380,8 @@ model OccurrenceOverride {
   updatedByUserId String?          @db.Uuid
 
   household     Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  rule          Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  // Composite key guarantees the rule belongs to this same household.
+  rule          Rule      @relation(fields: [ruleId, householdId], references: [id, householdId], onDelete: Cascade)
   updatedByUser User?     @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([ruleId, scheduledOn])

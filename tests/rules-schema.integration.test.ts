@@ -137,7 +137,7 @@ describe("database rules for bills and income", () => {
     });
     await allocation(v1.id);
     await expect(allocation(v1.id, { accountId: second.id })).rejects.toThrow(/Allocation_one_remainder/);
-    await expect(allocation(v1.id, { mode: "FIXED", value: "5" })).rejects.toThrow();
+    await expect(allocation(v1.id, { mode: "FIXED", value: "5" })).rejects.toMatchObject({ code: "P2002" });
     const v2 = await version(r.id, { effectiveFrom: d("2027-01-01"), anchorDate: d("2027-01-01") });
     await expect(allocation(v2.id)).resolves.toBeTruthy();
   });
@@ -149,7 +149,27 @@ describe("database rules for bills and income", () => {
       /OccurrenceOverride_confirmed_positive/,
     );
     await app.occurrenceOverride.create({ data: edit });
-    await expect(app.occurrenceOverride.create({ data: edit })).rejects.toThrow();
+    await expect(app.occurrenceOverride.create({ data: edit })).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("ties a per-date edit to its rule's own household", async () => {
+    const r = await rule();
+    const { householdId: other } = await seedPerson(owner, "other@example.test");
+    await expect(
+      owner.occurrenceOverride.create({ data: { householdId: other, ruleId: r.id, scheduledOn: d("2026-12-01") } }),
+    ).rejects.toThrow(/OccurrenceOverride_ruleId_householdId_fkey/);
+  });
+
+  it("keeps amounts to cents, and percentages to hundredths", async () => {
+    const r = await rule();
+    await expect(version(r.id, { amount: "1.005" })).rejects.toThrow(/RuleVersion_amount_cents/);
+    const v = await version(r.id, { amount: "1.01" });
+    await expect(allocation(v.id, { mode: "FIXED", value: "1.005" })).rejects.toThrow(/Allocation_fixed_cents/);
+    await expect(allocation(v.id, { mode: "PERCENT", value: "33.333" })).rejects.toThrow(/Allocation_percent_hundredths/);
+    await expect(
+      app.occurrenceOverride.create({ data: { householdId, ruleId: r.id, scheduledOn: d("2026-12-01"), confirmedAmount: "2.005" } }),
+    ).rejects.toThrow(/OccurrenceOverride_confirmed_cents/);
+    await expect(allocation(v.id, { mode: "PERCENT", value: "33.33" })).resolves.toBeTruthy();
   });
 
   it("removes a rule's versions and allocations with it, and keeps an account in use from being deleted", async () => {

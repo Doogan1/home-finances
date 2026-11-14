@@ -77,6 +77,8 @@ describe("secrets stay on the server", () => {
       "src/features/rules/recurrence.ts", // pure date calculations, usable from forms
       "src/features/rules/splits.ts", // pure split arithmetic
       "src/features/rules/summary.ts", // pure display helpers
+      "src/features/rules/versions.ts", // pure planning of changes, shared with form previews
+      "src/features/rules/messages.ts", // fixed messages only
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

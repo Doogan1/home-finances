@@ -20,19 +20,27 @@ export function listConnections(db: PrismaClient, householdId: string, environme
   });
 }
 
+/**
+ * Every account the page may show: those entered by hand, plus those from
+ * connections in the active Plaid environment (so Sandbox and live data are
+ * never shown together). The newest balance comes first: by the date it was
+ * true for hand-entered balances, then by when it was observed.
+ */
 export function listAccountsWithLatestBalance(
   db: PrismaClient,
   householdId: string,
   environment: PlaidEnvironment,
 ) {
   return db.account.findMany({
-    where: { householdId, plaidItem: { environment } },
+    where: { householdId, OR: [{ plaidItemId: null }, { plaidItem: { environment } }] },
     include: {
       plaidItem: { select: { id: true, institutionName: true, status: true } },
-      // Only the newest observation; older ones remain as history.
-      balances: { orderBy: { observedAt: "desc" }, take: 1 },
+      balances: {
+        orderBy: [{ asOfDate: { sort: "desc", nulls: "last" } }, { observedAt: "desc" }],
+        take: 1,
+      },
     },
-    orderBy: [{ plaidItem: { createdAt: "asc" } }, { name: "asc" }],
+    orderBy: [{ archivedAt: { sort: "desc", nulls: "first" } }, { plaidItem: { createdAt: "asc" } }, { name: "asc" }],
   });
 }
 

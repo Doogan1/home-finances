@@ -112,7 +112,10 @@ export async function refreshItemAccounts(
         });
       }
 
-      const vanished = existing.filter((a) => a.active && !returned.has(a.externalAccountId));
+      const vanished = existing.filter(
+        // Accounts under a connection always have an external id (a database check).
+        (a) => a.active && a.externalAccountId !== null && !returned.has(a.externalAccountId),
+      );
       if (vanished.length > 0) {
         await tx.account.updateMany({
           where: { id: { in: vanished.map((a) => a.id) } },

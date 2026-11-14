@@ -29,6 +29,8 @@ enum MemberRole {
 model Household {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
+  // IANA name ("America/New_York"); decides what "today" is. Asked for, never assumed.
+  timeZone  String?
   createdAt DateTime @default(now())
 
   memberships  Membership[]
@@ -199,8 +201,10 @@ model PlaidItem {
 model Account {
   id                String    @id @default(uuid()) @db.Uuid
   householdId       String    @db.Uuid
-  plaidItemId       String    @db.Uuid
-  externalAccountId String
+  // Both set for an account that came from Plaid; both null for one entered by
+  // hand (a check constraint forbids one without the other).
+  plaidItemId       String?   @db.Uuid
+  externalAccountId String?
   name              String
   officialName      String?
   // Last digits only. Full account numbers are never stored.
@@ -211,11 +215,19 @@ model Account {
   // Accounts missing from the provider are marked, never silently deleted.
   active            Boolean   @default(true)
   unavailableSince  DateTime?
+  // A label only ("Drake", "Alexis", "Shared"); not a user reference.
+  ownerLabel        String?
+  // Credit accounts are never forecast, whatever this says.
+  includeInForecast Boolean   @default(true)
+  // The balance below which the forecast warns. Null means no warning.
+  cushion           Decimal?  @db.Decimal(19, 4)
+  // Hand-entered accounts are archived, never deleted, so their history stays.
+  archivedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   household    Household         @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  plaidItem    PlaidItem         @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  plaidItem    PlaidItem?        @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
   balances     BalanceSnapshot[]
   transactions Transaction[]
 
@@ -228,6 +240,8 @@ model Account {
 enum BalanceSource {
   ACCOUNTS_GET
   BALANCE_GET
+  // Typed in by a person, true at the end of `asOfDate`.
+  MANUAL
 }
 
 model BalanceSnapshot {
@@ -242,6 +256,9 @@ model BalanceSnapshot {
   limit             Decimal?      @db.Decimal(19, 4)
   currency          String
   source            BalanceSource
+  // The calendar date the balance was true (end of day). Required for MANUAL.
+  asOfDate          DateTime?     @db.Date
+  note              String?
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 

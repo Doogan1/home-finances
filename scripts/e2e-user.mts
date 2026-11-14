@@ -206,6 +206,8 @@ async function main() {
       // attempts (by design), so remove those first; accounts, balances and
       // transactions go with their connection.
       await db.linkAttempt.deleteMany({ where: { householdId: { in: householdIds } } });
+      // Hand-entered accounts belong to the household, not to a connection.
+      await db.account.deleteMany({ where: { householdId: { in: householdIds } } });
       await db.plaidItem.deleteMany({ where: { householdId: { in: householdIds } } });
       await db.household.deleteMany({ where: { id: { in: householdIds } } });
     } else {

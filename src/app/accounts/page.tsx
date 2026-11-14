@@ -62,12 +62,12 @@ async function Accounts() {
               {account.name} <span className="muted">{maskAccount(account.mask)}</span>
               {!account.active && (
                 <span className="chip chip-muted">
-                  {account.plaidItem.status === "DISCONNECTED" ? "Disconnected · history kept" : "Not reported by bank"}
+                  {account.plaidItem?.status === "DISCONNECTED" ? "Disconnected · history kept" : "Not reported by bank"}
                 </span>
               )}
             </h2>
             <p className="muted">
-              {account.plaidItem.institutionName ?? "Bank"} · {account.subtype ?? account.type}
+              {account.plaidItem?.institutionName ?? "Bank"} · {account.subtype ?? account.type}
             </p>
             {balance ? (
               <>
@@ -95,7 +95,7 @@ async function Accounts() {
                   {account.unavailableSince && (
                     <>
                       {" "}
-                      · {account.plaidItem.status === "DISCONNECTED" ? "disconnected" : "bank stopped reporting this account"}{" "}
+                      · {account.plaidItem?.status === "DISCONNECTED" ? "disconnected" : "bank stopped reporting this account"}{" "}
                       {formatTimestamp(account.unavailableSince)}
                     </>
                   )}

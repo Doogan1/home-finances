@@ -74,6 +74,7 @@ describe("secrets stay on the server", () => {
       "src/lib/cents.ts", // pure money arithmetic, usable from forms
       "src/lib/zod-fields.ts", // pure request-body fields, usable from forms
       "src/features/accounts/input.ts", // zod schemas and account kinds only; forms share them
+      "src/features/rules/recurrence.ts", // pure date calculations, usable from forms
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

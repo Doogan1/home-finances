@@ -69,6 +69,8 @@ describe("secrets stay on the server", () => {
       "src/lib/auth/password.ts", // also used by the bootstrap CLI; holds no secret
       "src/lib/auth/origin.ts", // pure functions
       "src/lib/auth/client.ts", // browser-side helper
+      "src/lib/calendar-date.ts", // pure date helpers, usable from forms
+      "src/lib/money.ts", // pure money parsing, usable from forms
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

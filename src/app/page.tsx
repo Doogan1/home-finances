@@ -46,6 +46,9 @@ async function Household() {
           <Link href="/accounts/balances">Update balances</Link> — record hand-entered balances as of a date
         </li>
         <li>
+          <Link href="/bills">Bills &amp; income</Link> — what comes in and goes out, and when
+        </li>
+        <li>
           <Link href="/transactions">Transactions</Link> — sync on demand and review recent activity
         </li>
       </ul>

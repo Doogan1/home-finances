@@ -228,3 +228,15 @@ button {
   align-items: center;
   gap: 0.4rem;
 }
+
+.form fieldset {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid rgb(0 0 0 / 15%);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.form legend {
+  font-weight: 600;
+}

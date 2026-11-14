@@ -71,7 +71,8 @@ p {
   font-weight: 500;
 }
 
-.form input {
+.form input,
+.form select {
   padding: 0.5rem 0.625rem;
   font: inherit;
   color: inherit;
@@ -212,4 +213,18 @@ button {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  max-width: none;
+  margin-top: 0.5rem;
+}
+
+.form .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }

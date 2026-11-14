@@ -43,6 +43,9 @@ async function Household() {
           <Link href="/accounts">Accounts</Link> — balances, with when each was observed
         </li>
         <li>
+          <Link href="/accounts/balances">Update balances</Link> — record hand-entered balances as of a date
+        </li>
+        <li>
           <Link href="/transactions">Transactions</Link> — sync on demand and review recent activity
         </li>
       </ul>

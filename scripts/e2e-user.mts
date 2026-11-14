@@ -206,6 +206,10 @@ async function main() {
       // attempts (by design), so remove those first; accounts, balances and
       // transactions go with their connection.
       await db.linkAttempt.deleteMany({ where: { householdId: { in: householdIds } } });
+      // Rules (and, through them, their versions and allocations) point at
+      // accounts, so they go first.
+      await db.occurrenceOverride.deleteMany({ where: { householdId: { in: householdIds } } });
+      await db.rule.deleteMany({ where: { householdId: { in: householdIds } } });
       // Hand-entered accounts belong to the household, not to a connection.
       await db.account.deleteMany({ where: { householdId: { in: householdIds } } });
       await db.plaidItem.deleteMany({ where: { householdId: { in: householdIds } } });

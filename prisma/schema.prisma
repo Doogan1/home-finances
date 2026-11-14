@@ -37,6 +37,8 @@ model Household {
   plaidItems   PlaidItem[]
   accounts     Account[]
   linkAttempts LinkAttempt[]
+  rules               Rule[]
+  occurrenceOverrides OccurrenceOverride[]
 }
 
 // User, Session, AuthAccount and RateLimit are the tables Better Auth reads and
@@ -56,6 +58,7 @@ model User {
   memberships  Membership[]
   sessions     Session[]
   authAccounts AuthAccount[]
+  occurrenceEdits OccurrenceOverride[]
 }
 
 // Named AuthAccount (not Account) because Account is a bank account here.
@@ -230,6 +233,8 @@ model Account {
   plaidItem    PlaidItem?        @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
   balances     BalanceSnapshot[]
   transactions Transaction[]
+  allocations Allocation[]
+  paidByRules Rule[]       @relation("RulePaysAccount")
 
   @@unique([plaidItemId, externalAccountId])
   // Lets Transaction prove its account belongs to the same Item.
@@ -263,6 +268,121 @@ model BalanceSnapshot {
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, observedAt(sort: Desc)])
+}
+
+enum RuleKind {
+  INCOME
+  BILL
+}
+
+enum Recurrence {
+  ONCE
+  WEEKLY
+  MONTHLY
+  TWICE_MONTHLY
+}
+
+enum AllocationMode {
+  PERCENT
+  FIXED
+  REMAINDER
+}
+
+enum OccurrenceStatus {
+  PLANNED
+  CONFIRMED
+  PAID
+  SKIPPED
+}
+
+// A bill or an income stream: its identity. What it does, and from when, is in
+// its versions. Never deleted by the app; archived instead, so history stays.
+model Rule {
+  id            String    @id @default(uuid()) @db.Uuid
+  householdId   String    @db.Uuid
+  name          String
+  kind          RuleKind
+  category      String?
+  notes         String?
+  // Label only in this version: the card a card-payment bill pays ("→ Amex").
+  paysAccountId String?   @db.Uuid
+  // The workbook's id (MORT, NANNY, ...) for imported rules; set only by the import.
+  importRef     String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  household   Household            @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  paysAccount Account?             @relation("RulePaysAccount", fields: [paysAccountId], references: [id], onDelete: Restrict)
+  versions    RuleVersion[]
+  overrides   OccurrenceOverride[]
+
+  @@unique([householdId, importRef])
+  @@index([householdId])
+}
+
+// One period of a rule. The versions of a rule never overlap (an exclusion
+// constraint in the migration); "Change from…" ends one and starts the next.
+model RuleVersion {
+  id            String     @id @default(uuid()) @db.Uuid
+  ruleId        String     @db.Uuid
+  effectiveFrom DateTime   @db.Date
+  // null = open-ended
+  effectiveTo   DateTime?  @db.Date
+  amount        Decimal    @db.Decimal(19, 4)
+  recurrence    Recurrence
+  interval      Int        @default(1)
+  anchorDate    DateTime   @db.Date
+  // 31 means the last day of the month.
+  dayOfMonth    Int?
+  secondDay     Int?
+  note          String?
+  createdAt     DateTime   @default(now())
+
+  rule        Rule         @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  allocations Allocation[]
+
+  @@index([ruleId, effectiveFrom])
+}
+
+// Where a version's money goes (income) or comes from (a bill: exactly one).
+model Allocation {
+  id            String         @id @default(uuid()) @db.Uuid
+  ruleVersionId String         @db.Uuid
+  accountId     String         @db.Uuid
+  mode          AllocationMode
+  // A percentage (0–100) for PERCENT, an amount for FIXED, null for REMAINDER.
+  value         Decimal?       @db.Decimal(19, 4)
+  // The order the person entered the splits in.
+  position      Int            @default(0)
+
+  ruleVersion RuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Cascade)
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([ruleVersionId, accountId])
+  @@index([accountId])
+}
+
+// The person's edit to one occurrence, keyed by the date the rule produced, so it
+// survives a new version. Occurrences themselves are computed, never stored.
+model OccurrenceOverride {
+  id              String           @id @default(uuid()) @db.Uuid
+  householdId     String           @db.Uuid
+  ruleId          String           @db.Uuid
+  scheduledOn     DateTime         @db.Date
+  status          OccurrenceStatus @default(PLANNED)
+  confirmedAmount Decimal?         @db.Decimal(19, 4)
+  movedTo         DateTime?        @db.Date
+  note            String?
+  updatedAt       DateTime         @updatedAt
+  updatedByUserId String?          @db.Uuid
+
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  rule          Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([ruleId, scheduledOn])
+  @@index([householdId])
 }
 
 model Transaction {

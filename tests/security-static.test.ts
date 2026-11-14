@@ -187,9 +187,14 @@ describe("logging cannot leak", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the only logging in the app is in the three reviewed places", () => {
+  it("the only logging in the app is in the four reviewed places", () => {
     const loggers = sourceFiles.filter((f) => /console\.(log|info|warn|error|debug)\(/.test(read(f))).map(rel);
 
-    expect(loggers).toEqual(["src/features/accounts/http.ts", "src/features/plaid/http.ts", "src/features/plaid/sync.ts"]);
+    expect(loggers).toEqual([
+      "src/features/accounts/http.ts",
+      "src/features/plaid/http.ts",
+      "src/features/plaid/sync.ts",
+      "src/features/rules/http.ts",
+    ]);
   });
 });

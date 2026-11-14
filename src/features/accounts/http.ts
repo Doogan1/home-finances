@@ -8,13 +8,18 @@ const MAPPED: Record<AccountErrorCode, { status: number; message: string }> = {
   archived: { status: 409, message: "That account is archived." },
   time_zone_required: { status: 409, message: "Set your household's time zone first." },
   future_date: { status: 400, message: "That date is in the future." },
+  in_use: { status: 409, message: "That account is still used by a bill or income." },
 };
 
 /** Fixed messages only; internal errors are logged by name, never by content. */
 export function accountErrorResponse(error: unknown, route: string): Response {
   if (error instanceof AccountInputError) {
     const mapped = MAPPED[error.code];
-    return jsonNoStore({ error: error.code, message: mapped.message }, mapped.status);
+    const message =
+      error.code === "in_use" && error.ruleNames.length > 0
+        ? `That account is still used by ${error.ruleNames.join(", ")}. Stop or change those first.`
+        : mapped.message;
+    return jsonNoStore({ error: error.code, message }, mapped.status);
   }
   console.error(`[accounts] ${route} failed unexpectedly`, { name: error instanceof Error ? error.name : typeof error });
   return jsonNoStore({ error: "internal_error", message: "Something went wrong." }, 500);

@@ -11,10 +11,20 @@ import { ACCOUNT_KINDS, type CreateAccountInput, type RecordBalancesInput, type 
  * manual balances here.
  */
 
-export type AccountErrorCode = "account_not_found" | "not_manual" | "archived" | "time_zone_required" | "future_date";
+export type AccountErrorCode =
+  | "account_not_found"
+  | "not_manual"
+  | "archived"
+  | "time_zone_required"
+  | "future_date"
+  | "in_use";
 
 export class AccountInputError extends Error {
-  constructor(readonly code: AccountErrorCode) {
+  constructor(
+    readonly code: AccountErrorCode,
+    // For "in_use": the rules that still use the account.
+    readonly ruleNames: readonly string[] = [],
+  ) {
     super(code);
     this.name = "AccountInputError";
   }
@@ -61,9 +71,23 @@ export async function updateAccount(db: PrismaClient, householdId: string, accou
   });
 }
 
-export async function archiveManualAccount(db: PrismaClient, householdId: string, accountId: string) {
+export async function archiveManualAccount(db: PrismaClient, householdId: string, accountId: string, now: Date = new Date()) {
   const account = await findOwned(db, householdId, accountId);
   if (account.plaidItemId !== null) throw new AccountInputError("not_manual");
+
+  // A rule still uses the account if a version that splits money to or from it
+  // has no end, or ends today or later. Without a time zone there is no
+  // "today", so every such version counts.
+  const household = await db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
+  const today = household.timeZone ? parseIsoDate(todayIn(household.timeZone, now)) : null;
+  const stillRunning = today ? { OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }] } : {};
+  const users = await db.rule.findMany({
+    where: { householdId, archivedAt: null, versions: { some: { ...stillRunning, allocations: { some: { accountId: account.id } } } } },
+    select: { name: true },
+    orderBy: { name: "asc" },
+  });
+  if (users.length > 0) throw new AccountInputError("in_use", users.map((rule) => rule.name));
+
   // Guarded so archiving twice keeps the first date.
   await db.account.updateMany({ where: { id: account.id, archivedAt: null }, data: { archivedAt: new Date() } });
 }

@@ -13,11 +13,12 @@ type Props = {
   category: string | null;
   notes: string | null;
   paysAccountId: string | null;
+  paysAccountName: string | null;
   cards: AccountChoice[];
 };
 
 /** Name, category, notes and (for a card payment) the card it pays. None of these make history. */
-export function RuleDetailsForm({ ruleId, kind, name, category, notes, paysAccountId, cards }: Props) {
+export function RuleDetailsForm({ ruleId, kind, name, category, notes, paysAccountId, paysAccountName, cards }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +73,9 @@ export function RuleDetailsForm({ ruleId, kind, name, category, notes, paysAccou
           Pays card
           <select name="paysAccountId" defaultValue={paysAccountId ?? ""}>
             <option value="">None</option>
+            {paysAccountId !== null && !cards.some((card) => card.id === paysAccountId) && (
+              <option value={paysAccountId}>{paysAccountName ?? "Unknown account"} (archived)</option>
+            )}
             {cards.map((card) => (
               <option key={card.id} value={card.id}>
                 {card.name}

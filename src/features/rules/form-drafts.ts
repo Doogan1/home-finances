@@ -1,7 +1,7 @@
 import { parseIsoDate } from "@/lib/calendar-date";
 import { parseMoney } from "@/lib/money";
 import { toPattern, type ScheduleBody } from "./input";
-import type { Pattern, Recurrence } from "./recurrence";
+import { clampedDay, type Pattern, type Recurrence } from "./recurrence";
 import type { AllocationLike, AllocationMode } from "./splits";
 
 /**
@@ -37,6 +37,15 @@ export function scheduleDraftFrom(pattern: Pattern): ScheduleDraft {
 
 const wholeNumber = (text: string): number | null => (/^\d{1,3}$/.test(text.trim()) ? Number(text.trim()) : null);
 
+function monthlyDay(draft: ScheduleDraft, anchorDate: string): number {
+  if (draft.lastDay) return 31;
+  const kept = wholeNumber(draft.dayOfMonth);
+  const year = Number(anchorDate.slice(0, 4));
+  const month = Number(anchorDate.slice(5, 7));
+  if (kept !== null && kept >= 1 && kept <= 31 && clampedDay(year, month, kept) === anchorDate) return kept;
+  return Number(anchorDate.slice(8, 10));
+}
+
 /** The request body for a schedule, or null while it is incomplete. The server checks the limits. */
 export function scheduleBody(draft: ScheduleDraft): ScheduleBody | null {
   if (!parseIsoDate(draft.anchorDate)) return null;
@@ -49,9 +58,8 @@ export function scheduleBody(draft: ScheduleDraft): ScheduleBody | null {
       return interval ? { recurrence: "WEEKLY", interval, anchorDate } : null;
     case "MONTHLY":
       // A monthly schedule repeats on its first date's day, or on the last day of each month.
-      return interval
-        ? { recurrence: "MONTHLY", interval, anchorDate, dayOfMonth: draft.lastDay ? 31 : Number(anchorDate.slice(8, 10)) }
-        : null;
+      // A kept day (29 or 30) survives when the first date is that month's clamped day for it.
+      return interval ? { recurrence: "MONTHLY", interval, anchorDate, dayOfMonth: monthlyDay(draft, anchorDate) } : null;
     case "TWICE_MONTHLY": {
       const first = wholeNumber(draft.dayOfMonth);
       const second = wholeNumber(draft.secondDay);

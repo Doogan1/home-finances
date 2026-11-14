@@ -14,7 +14,7 @@ import type { AccountChoice } from "@/features/rules/form-drafts";
 import { accountLookup, getRule, listAccountChoices, listOverrides, type OverrideView, type RuleView } from "@/features/rules/queries";
 import { nextOccurrences, ruleOccurrences } from "@/features/rules/recurrence";
 import { splitAmount } from "@/features/rules/splits";
-import { describeAllocations, describeSchedule, formatIsoDate, latestVersion, ruleState, versionFor } from "@/features/rules/summary";
+import { describeAllocations, describeSchedule, formatIsoDate, latestVersion, ruleState } from "@/features/rules/summary";
 import type { StoredVersion } from "@/features/rules/versions";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { todayIn, type IsoDate } from "@/lib/calendar-date";
@@ -63,7 +63,6 @@ async function Rule({ params }: { params: Params }) {
   const today = household.timeZone ? todayIn(household.timeZone) : null;
   const nameOf: NameOf = (accountId) => accounts.get(accountId)?.name ?? "Unknown account";
   const latest = latestVersion(rule.versions);
-  const current = today ? versionFor(rule.versions, today) : latest;
   const state = today ? ruleState(rule, today) : null;
   const heading = [rule.kind === "INCOME" ? "Income" : "Bill", rule.category, rule.paysAccount && `pays ${rule.paysAccount.name}`]
     .filter(Boolean)
@@ -87,7 +86,7 @@ async function Rule({ params }: { params: Params }) {
               <strong>
                 {formatIsoDate(version.effectiveFrom)} → {version.effectiveTo ? formatIsoDate(version.effectiveTo) : "(no end)"}
               </strong>{" "}
-              {version.id === current.id && <span className="chip chip-ok">In effect</span>}
+              {today && version.effectiveFrom <= today && (version.effectiveTo === null || version.effectiveTo >= today) && <span className="chip chip-ok">In effect</span>}
             </p>
             <p>{describeVersion(version, nameOf)}</p>
             {version.note && <p className="muted">{version.note}</p>}
@@ -99,7 +98,7 @@ async function Rule({ params }: { params: Params }) {
       </ol>
 
       {!rule.archivedAt && <Actions rule={rule} today={today} choices={choices} accounts={accounts} />}
-      {today && <NextOccurrences versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
+      {today && !rule.archivedAt && <NextOccurrences versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
       <EditsOffSchedule versions={rule.versions} overrides={overrides} />
     </>
   );
@@ -141,6 +140,7 @@ function Actions({
         category={rule.category}
         notes={rule.notes}
         paysAccountId={rule.paysAccount?.id ?? null}
+        paysAccountName={rule.paysAccount?.name ?? null}
         cards={choices.filter((account) => account.type === "credit")}
       />
       <ArchiveRuleButton ruleId={rule.id} name={rule.name} />

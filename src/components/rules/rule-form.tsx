@@ -32,8 +32,11 @@ export function RuleForm({ kind, accounts }: { kind: RuleKind; accounts: Account
       allocations: allocationBodies(allocations),
       ...(kind === "BILL" ? { paysAccountId: String(data.get("paysAccountId") ?? "") || null } : {}),
     });
-    setSaving(false);
-    if (!result.ok) return setError(result.message);
+    // Stays disabled after success, while the page navigates, so a second click cannot add the rule twice.
+    if (!result.ok) {
+      setSaving(false);
+      return setError(result.message);
+    }
     router.push(`/bills/${result.data.id}`);
   }
 

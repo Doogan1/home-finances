@@ -129,7 +129,9 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
       {GROUPS.map(({ group, title, note }) => {
         const inGroup = rows.filter((row) => row.group === group);
         if (inGroup.length === 0) return null;
-        const total = inGroup.reduce((sum, row) => sum + (row.monthly ?? 0n), 0n);
+        // Only rows still running count towards the monthly total.
+        const total = inGroup.reduce((sum, row) => (row.state === "active" ? sum + (row.monthly ?? 0n) : sum), 0n);
+        const allActive = inGroup.every((row) => row.state === "active");
         return (
           <section key={group}>
             <h2>{title}</h2>
@@ -160,7 +162,9 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}>About {money(total)} a month in all</td>
+                  <td colSpan={4}>
+                    About {money(total)} a month {allActive ? "in all" : "for the active ones"}
+                  </td>
                   <td />
                 </tr>
               </tfoot>

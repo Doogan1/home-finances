@@ -132,6 +132,8 @@ describe("planChangeFrom", () => {
     expect(planChangeFrom([stopped], change({ from: "2027-07-01" }))).toEqual({ ok: false, code: "rule_ended" });
     const plan = planChangeFrom([stopped], change());
     expect(plan.ok && plan.value.next.effectiveTo).toBe("2027-06-30");
+    // The first date of the old pattern on or after the change falls after the stop.
+    expect(planChangeFrom([stopped], change({ from: "2027-06-29" }))).toEqual({ ok: false, code: "no_later_occurrence" });
   });
 
   it("uses a new schedule as given, and checks it", () => {
@@ -160,6 +162,13 @@ describe("planStop", () => {
 
   it("refuses a day before the latest version starts", () => {
     expect(planStop([paycheck], "2026-11-19")).toEqual({ ok: false, code: "stop_before_version_start" });
+  });
+
+  it("refuses to move a stop later, but allows an earlier one", () => {
+    const stopped = { ...paycheck, effectiveTo: "2027-06-30" };
+    expect(planStop([stopped], "2027-07-15")).toEqual({ ok: false, code: "rule_ended" });
+    expect(planStop([stopped], "2027-06-30")).toEqual({ ok: true, value: { versionId: "v1", effectiveTo: "2027-06-30" } });
+    expect(planStop([stopped], "2027-03-05")).toEqual({ ok: true, value: { versionId: "v1", effectiveTo: "2027-03-05" } });
   });
 });
 

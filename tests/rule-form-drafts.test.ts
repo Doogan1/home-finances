@@ -41,6 +41,7 @@ describe("schedule drafts", () => {
     const patterns: Pattern[] = [
       { recurrence: "MONTHLY", interval: 1, anchorDate: "2026-12-01", dayOfMonth: 1, secondDay: null },
       { recurrence: "MONTHLY", interval: 1, anchorDate: "2026-11-30", dayOfMonth: 31, secondDay: null },
+      { recurrence: "MONTHLY", interval: 1, anchorDate: "2027-02-28", dayOfMonth: 30, secondDay: null },
       { recurrence: "WEEKLY", interval: 2, anchorDate: "2026-11-20", dayOfMonth: null, secondDay: null },
       { recurrence: "TWICE_MONTHLY", interval: 1, anchorDate: "2026-11-05", dayOfMonth: 5, secondDay: 20 },
     ];

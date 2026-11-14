@@ -96,6 +96,7 @@ export function planChangeFrom(
   if (schedule === null) {
     const anchorDate = firstOnOrAfter(current, change.from);
     if (anchorDate === null) return refuse("no_later_occurrence");
+    if (current.effectiveTo !== null && anchorDate > current.effectiveTo) return refuse("no_later_occurrence");
     schedule = { ...patternOf(current), anchorDate };
   }
   const problem = scheduleProblem(schedule, change.from);
@@ -122,6 +123,8 @@ export function planChangeFrom(
 export function planStop(versions: readonly StoredVersion[], on: IsoDate): Planned<{ versionId: string; effectiveTo: IsoDate }> {
   const current = latestVersion(versions);
   if (on < current.effectiveFrom) return refuse("stop_before_version_start");
+  // Moving or removing a stop is done through "Edit this version".
+  if (current.effectiveTo !== null && on > current.effectiveTo) return refuse("rule_ended");
   return { ok: true, value: { versionId: current.id, effectiveTo: on } };
 }
 

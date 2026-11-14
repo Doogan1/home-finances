@@ -32,11 +32,11 @@ test("add an income with a split and a bill, and see them on Bills & income", as
   await page.getByLabel("Amount", { exact: true }).fill("1,926.94");
   await page.getByLabel("Repeats").selectOption("WEEKLY");
   await page.getByLabel("First date", { exact: true }).fill("2030-01-04");
-  await page.getByLabel("Account 1").selectOption({ label: "E2E Rules Spend" });
+  await page.getByRole("combobox", { name: "Account 1" }).selectOption({ label: "E2E Rules Spend" });
   await page.getByLabel("Share 1").selectOption("PERCENT");
   await page.getByLabel("Value 1").fill("70");
   await page.getByRole("button", { name: "Add an account" }).click();
-  await page.getByLabel("Account 2").selectOption({ label: "E2E Rules Savings" });
+  await page.getByRole("combobox", { name: "Account 2" }).selectOption({ label: "E2E Rules Savings" });
   await page.getByLabel("Share 2").selectOption("REMAINDER");
   await page.getByRole("button", { name: "Add income" }).click();
   await expect(page).toHaveURL(/\/bills\/[0-9a-f-]{36}$/);
@@ -46,11 +46,11 @@ test("add an income with a split and a bill, and see them on Bills & income", as
   await page.getByLabel("Name", { exact: true }).fill("E2E Too much");
   await page.getByLabel("Amount", { exact: true }).fill("100");
   await page.getByLabel("First date", { exact: true }).fill("2030-01-04");
-  await page.getByLabel("Account 1").selectOption({ label: "E2E Rules Spend" });
+  await page.getByRole("combobox", { name: "Account 1" }).selectOption({ label: "E2E Rules Spend" });
   await page.getByLabel("Share 1").selectOption("FIXED");
   await page.getByLabel("Value 1").fill("500");
   await page.getByRole("button", { name: "Add an account" }).click();
-  await page.getByLabel("Account 2").selectOption({ label: "E2E Rules Savings" });
+  await page.getByRole("combobox", { name: "Account 2" }).selectOption({ label: "E2E Rules Savings" });
   await page.getByLabel("Share 2").selectOption("REMAINDER");
   await page.getByRole("button", { name: "Add income" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "The splits add up to more than the amount." })).toBeVisible();

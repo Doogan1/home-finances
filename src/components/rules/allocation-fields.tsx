@@ -69,7 +69,11 @@ export function AllocationFields({
             </label>
           )}
           {value.length > 1 && (
-            <button type="button" onClick={() => onChange(value.filter((_, i) => i !== index))}>
+            <button
+              type="button"
+              aria-label={`Remove account ${index + 1}`}
+              onClick={() => onChange(value.filter((_, i) => i !== index))}
+            >
               Remove
             </button>
           )}

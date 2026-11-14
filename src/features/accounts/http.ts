@@ -11,7 +11,7 @@ const MAPPED: Record<AccountErrorCode, { status: number; message: string }> = {
   in_use: { status: 409, message: "That account is still used by a bill or income." },
 };
 
-/** Fixed messages only; internal errors are logged by name, never by content. */
+/** Messages are fixed, apart from the household's own rule names; internal errors are logged by name, never by content. */
 export function accountErrorResponse(error: unknown, route: string): Response {
   if (error instanceof AccountInputError) {
     const mapped = MAPPED[error.code];

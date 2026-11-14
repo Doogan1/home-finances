@@ -32,6 +32,13 @@ export function daysBetween(from: IsoDate, to: IsoDate): number {
   return Math.round((b.getTime() - a.getTime()) / DAY_MS);
 }
 
+/** The date `days` calendar days after `date` (before it when negative). */
+export function addDays(date: IsoDate, days: number): IsoDate {
+  const start = parseIsoDate(date);
+  if (!start) throw new RangeError("addDays needs a valid date");
+  return toIsoDate(new Date(start.getTime() + days * DAY_MS));
+}
+
 /** The household's current calendar date. */
 export function todayIn(timeZone: string, now: Date = new Date()): IsoDate {
   const parts = new Intl.DateTimeFormat("en-CA", {

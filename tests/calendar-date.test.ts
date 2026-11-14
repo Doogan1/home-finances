@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, isTimeZone, parseIsoDate, toIsoDate, todayIn } from "@/lib/calendar-date";
+import { addDays, daysBetween, isTimeZone, parseIsoDate, toIsoDate, todayIn } from "@/lib/calendar-date";
 
 describe("parseIsoDate", () => {
   it("reads a real date as UTC midnight", () => {
@@ -21,6 +21,22 @@ describe("toIsoDate and daysBetween", () => {
     expect(daysBetween("2026-11-21", "2026-11-14")).toBe(-7);
     // Across the US daylight-saving change (Nov 1, 2026): still whole days.
     expect(daysBetween("2026-10-31", "2026-11-02")).toBe(2);
+  });
+});
+
+describe("addDays", () => {
+  it("moves across month, year and leap-day boundaries", () => {
+    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+    expect(addDays("2027-01-01", -1)).toBe("2026-12-31");
+    expect(addDays("2028-02-28", 1)).toBe("2028-02-29");
+    expect(addDays("2026-11-20", 42)).toBe("2027-01-01");
+  });
+  it("is not affected by daylight saving", () => {
+    expect(addDays("2026-03-07", 1)).toBe("2026-03-08");
+    expect(addDays("2026-11-01", 1)).toBe("2026-11-02");
+  });
+  it("refuses an invalid date", () => {
+    expect(() => addDays("2026-02-30", 1)).toThrow(RangeError);
   });
 });
 

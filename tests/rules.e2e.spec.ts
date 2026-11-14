@@ -76,3 +76,66 @@ test("add an income with a split and a bill, and see them on Bills & income", as
   await expect(mortgage).toContainText("$1,840.91");
   await expect(page.getByRole("row", { name: /E2E Too much/ })).toHaveCount(0);
 });
+
+test("change an income from a date, stop it, undo the stop, then archive it", async ({ page }) => {
+  const origin = await setUp(page);
+  const spend = await handAccount(page, origin, "E2E Change Spend", "checking");
+  const savings = await handAccount(page, origin, "E2E Change Savings", "savings");
+  const created = await page.request.post("/api/rules", {
+    headers: origin,
+    data: {
+      kind: "INCOME",
+      name: "E2E Salary",
+      amount: "1,926.94",
+      schedule: { recurrence: "WEEKLY", interval: 1, anchorDate: "2030-01-04" },
+      allocations: [
+        { accountId: spend, mode: "PERCENT", value: "70" },
+        { accountId: savings, mode: "REMAINDER" },
+      ],
+    },
+  });
+  expect(created.status()).toBe(201);
+  const { id } = (await created.json()) as { id: string };
+  await page.goto(`/bills/${id}`);
+
+  await expect(page.getByRole("heading", { name: "E2E Salary" })).toBeVisible();
+  const versions = page.getByRole("list", { name: "Versions" });
+  await expect(versions).toContainText("Jan 4, 2030 → (no end)");
+  await expect(versions).toContainText("$1,926.94 · Every Friday · 70% E2E Change Spend · rest E2E Change Savings");
+  const first = page.getByRole("table", { name: "Next 10" }).getByRole("row").nth(1);
+  await expect(first).toContainText("Jan 4, 2030");
+  await expect(first).toContainText("E2E Change Spend $1,348.86");
+  await expect(first).toContainText("Planned");
+
+  await page.getByRole("button", { name: "Change from…" }).click();
+  await page.getByLabel("Starting").fill("2030-02-01");
+  await page.getByLabel("Amount", { exact: true }).fill("1,826.94");
+  await expect(page.getByText("E2E Change Spend gets $70.00 less each time.")).toBeVisible();
+  await page.getByRole("button", { name: "Save change" }).click();
+  await expect(versions).toContainText("Jan 4, 2030 → Jan 31, 2030");
+  await expect(versions).toContainText("Feb 1, 2030 → (no end)");
+
+  await page.getByRole("button", { name: "Stop on…" }).click();
+  await page.getByLabel("Stop on").fill("2030-03-01");
+  await expect(page.getByText("Last date: Mar 1, 2030")).toBeVisible();
+  await page.getByRole("button", { name: "Save stop date" }).click();
+  await expect(versions).toContainText("Feb 1, 2030 → Mar 1, 2030");
+
+  // A mistaken stop is undone by clearing the latest version's end.
+  await page.getByRole("button", { name: "Edit this version" }).last().click();
+  await page.getByLabel("Ends on").fill("");
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(versions).toContainText("Feb 1, 2030 → (no end)");
+
+  // While it runs, the accounts it uses can't be archived.
+  const refused = await page.request.post(`/api/accounts/${spend}/archive`, { headers: origin, data: {} });
+  expect(refused.status()).toBe(409);
+  expect(((await refused.json()) as { message: string }).message).toContain("E2E Salary");
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(page).toHaveURL(/\/bills$/);
+  await expect(page.getByRole("link", { name: "E2E Salary" })).toHaveCount(0);
+  await page.goto("/bills?show=all");
+  await expect(page.getByRole("row", { name: /E2E Salary/ })).toContainText("Archived");
+});

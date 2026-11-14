@@ -17,6 +17,9 @@ VM, see [future-deployment.md](future-deployment.md).
 | Sync transactions | the **Sync now** button, or `docker compose exec app npm run sync -- --all` |
 | Add an account by hand | Accounts → **Add an account** |
 | Record balances by hand | Accounts → **Update balances** (one date, many accounts) |
+| Add a bill or an income stream | Bills & income → **+ Add bill** or **+ Add income** |
+| Change a bill or paycheck from a date on (a raise, a new amount) | Open it → **Change from…** (the old version ends the day before) |
+| Stop one (leaving a job, cancelling a service) | Open it → **Stop on…**; undo with **Edit this version** and a blank "Ends on" |
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |
 | Rotate the token-encryption key | [see below](#rotating-the-token-encryption-key) |

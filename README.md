@@ -18,6 +18,13 @@ You can also add accounts by hand (Accounts → **Add an account**) and record t
 balances on one date (**Update balances**). Hand-entered balances are real financial
 data that exists nowhere else, so run `npm run backup` regularly from now on.
 
+**Bills and income.** Each bill or income stream is a rule that produces dates
+(every N weeks, every N months on a day, twice a month, or once; a day past the
+month's end means its last day). Occurrences are computed, never stored, so
+nothing needs regenerating. "Change from…" ends the current version and starts
+an edited copy; "Stop on…" sets an end date; per-date edits are kept across
+versions. Income can be split across accounts, with one account taking the rest.
+
 | Read this | For |
 | --- | --- |
 | [docs/local-development.md](docs/local-development.md) | day-to-day operation: restarts, tests, **backups and restore**, **encryption-key backup and rotation**, Sandbox testing, **going live**, troubleshooting |
@@ -243,6 +250,7 @@ src/lib/db.ts                       Prisma client factory and per-process single
 src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
 src/features/plaid/                  Plaid gateway (SDK), link flow, account refresh, formatting
 src/features/accounts/               hand-entered accounts and balances (service, input parsing, HTTP helpers); pages in src/app/accounts/
+src/features/rules/                  bills and income: the date calculations, splits and change planning (pure, shared with the forms), the request bodies, and the server-only reads and writes; pages in src/app/bills/
 src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
 src/lib/data/                       household-scoped data access helpers

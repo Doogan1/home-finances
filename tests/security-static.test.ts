@@ -79,6 +79,8 @@ describe("secrets stay on the server", () => {
       "src/features/rules/summary.ts", // pure display helpers
       "src/features/rules/versions.ts", // pure planning of changes, shared with form previews
       "src/features/rules/messages.ts", // fixed messages only
+      "src/features/rules/input.ts", // zod schemas only; forms share them
+      "src/features/rules/form-drafts.ts", // pure form state helpers
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

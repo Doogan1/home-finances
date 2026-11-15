@@ -351,6 +351,21 @@ function readSettings(grid: Grid, problems: string[]): Settings | null {
   };
 }
 
+/** Two rows with the same ID, or the same bill and date, are one occurrence: the first is used, the repeat is a problem. */
+function firstOfEach(rows: ScheduleEntry[], problems: string[]): ScheduleEntry[] {
+  const seen = new Map<string, number>();
+  return rows.filter((entry) => {
+    const first = seen.get(entry.id) ?? seen.get(`${entry.billId}|${entry.dueDate}`);
+    if (first !== undefined) {
+      problems.push(`Bill Schedule row ${entry.row}: same bill and date as row ${first}`);
+      return false;
+    }
+    seen.set(entry.id, entry.row);
+    seen.set(`${entry.billId}|${entry.dueDate}`, entry.row);
+    return true;
+  });
+}
+
 export function parseWorkbook(sheets: Sheets): ParsedWorkbook {
   const problems: string[] = [];
   const sheet = (name: string, required: boolean): Grid => {
@@ -363,7 +378,7 @@ export function parseWorkbook(sheets: Sheets): ParsedWorkbook {
   const settingsGrid = sheet(SHEETS.settings, true);
   const settings = sheets.has(SHEETS.settings) ? readSettings(settingsGrid, problems) : null;
   const bills = table(sheet(SHEETS.bills, true), SHEETS.bills, problems, readBill);
-  const schedule = table(sheet(SHEETS.schedule, true), SHEETS.schedule, problems, readSchedule);
+  const schedule = firstOfEach(table(sheet(SHEETS.schedule, true), SHEETS.schedule, problems, readSchedule), problems);
   const cashFlow = table(sheet(SHEETS.cashFlow, false), SHEETS.cashFlow, problems, readCashFlow);
   return { accounts, history, settings, bills, schedule, cashFlow, problems };
 }

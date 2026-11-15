@@ -35,7 +35,7 @@ export type ParsedChoices = { ok: true; choices: Choices } | { ok: false; proble
 export function parseChoices(text: string): ParsedChoices {
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text.replace(/^﻿/, ""));
   } catch {
     return { ok: false, problems: ["choices.json is not valid JSON"] };
   }

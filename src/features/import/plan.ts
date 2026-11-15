@@ -1,4 +1,5 @@
 import { createAccountInput, type AccountKind } from "@/features/accounts/input";
+import { changeFromInput, createRuleInput } from "@/features/rules/input";
 import { clampedDay, firstOnOrAfter, type Pattern } from "@/features/rules/recurrence";
 import type { AllocationMode } from "@/features/rules/splits";
 import { allocationProblem, planChangeFrom, scheduleProblem, type RuleKind, type StoredVersion } from "@/features/rules/versions";
@@ -141,21 +142,71 @@ function planSnapshots(workbook: ParsedWorkbook, accounts: readonly PlannedAccou
 const typeOf = (accounts: readonly PlannedAccount[], ref: string) =>
   accounts.find((a) => a.ref === ref)?.kind === "credit_card" ? "credit" : "depository";
 
-function checkVersion(kind: RuleKind, version: PlannedVersion, accounts: readonly PlannedAccount[], where: string, problems: string[]) {
-  const schedule = scheduleProblem(version, version.effectiveFrom);
-  const allocation = allocationProblem(
-    kind,
-    version.amount,
-    version.allocations.map((a) => ({ accountId: a.accountRef, mode: a.mode, value: a.value, accountType: typeOf(accounts, a.accountRef) })),
-  );
-  if (toCents(version.amount) <= 0n) problems.push(`${where}: the amount must be more than zero`);
-  else if (schedule ?? allocation) problems.push(`${where}: ${schedule ?? allocation}`);
+/** The schedule part of a rule's request body, as the rule routes take it. */
+export function scheduleBody(v: Pattern) {
+  switch (v.recurrence) {
+    case "ONCE":
+      return { recurrence: v.recurrence, anchorDate: v.anchorDate };
+    case "WEEKLY":
+      return { recurrence: v.recurrence, interval: v.interval, anchorDate: v.anchorDate };
+    case "MONTHLY":
+      return { recurrence: v.recurrence, interval: v.interval, anchorDate: v.anchorDate, dayOfMonth: v.dayOfMonth };
+    case "TWICE_MONTHLY":
+      return { recurrence: v.recurrence, anchorDate: v.anchorDate, dayOfMonth: v.dayOfMonth, secondDay: v.secondDay };
+  }
 }
 
-function checkText(rule: PlannedRule, where: string, problems: string[]) {
-  if (rule.name.length > 80) problems.push(`${where}: the name is longer than 80 characters`);
-  if ((rule.category?.length ?? 0) > 40) problems.push(`${where}: the category is longer than 40 characters`);
-  if ((rule.notes?.length ?? 0) > 500) problems.push(`${where}: the notes are longer than 500 characters`);
+/** A stand-in id per workbook account, so a rule's body can be checked before any account exists. */
+const placeholderId = (accounts: readonly PlannedAccount[], ref: string) => {
+  const n = accounts.findIndex((a) => a.ref === ref) + 1;
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+};
+
+const issues = (error: { issues: readonly { path: PropertyKey[]; message: string }[] }) =>
+  error.issues.map((i) => `${i.path.map(String).join(".")} ${i.message}`).join("; ");
+
+/**
+ * Runs the app's own rule input schemas on the planned rule, so whatever the
+ * rule form would refuse (a limit on text or an amount, a date, a percentage)
+ * is a problem now, not a failure in `--apply`; then the schedule and split
+ * checks the service makes. A bill with no card yet has no split to check.
+ */
+function checkRule(rule: PlannedRule, accounts: readonly PlannedAccount[], where: string, problems: string[]) {
+  const split = (list: PlannedAllocation[]) =>
+    (list.length > 0 ? list : [{ accountRef: "", mode: "REMAINDER" as const, value: null }]).map((a) =>
+      a.mode === "REMAINDER"
+        ? { accountId: placeholderId(accounts, a.accountRef), mode: a.mode }
+        : { accountId: placeholderId(accounts, a.accountRef), mode: a.mode, value: a.value },
+    );
+  rule.versions.forEach((version, index) => {
+    const label = index === 0 ? where : `${where}, changed pay`;
+    const parsed =
+      index === 0
+        ? createRuleInput.safeParse({
+            kind: rule.kind,
+            name: rule.name,
+            category: rule.category ?? undefined,
+            notes: rule.notes ?? undefined,
+            effectiveFrom: version.effectiveFrom,
+            amount: version.amount,
+            schedule: scheduleBody(version),
+            allocations: split(version.allocations),
+            note: version.note ?? undefined,
+          })
+        : changeFromInput.safeParse({ from: version.effectiveFrom, amount: version.amount, allocations: split(version.allocations), note: version.note ?? undefined });
+    if (!parsed.success) {
+      problems.push(`${label}: ${issues(parsed.error)}`);
+      return;
+    }
+    if (version.allocations.length === 0) return;
+    const schedule = scheduleProblem(version, version.effectiveFrom);
+    const allocation = allocationProblem(
+      rule.kind,
+      version.amount,
+      version.allocations.map((a) => ({ accountId: a.accountRef, mode: a.mode, value: a.value, accountType: typeOf(accounts, a.accountRef) })),
+    );
+    if (schedule ?? allocation) problems.push(`${label}: ${schedule ?? allocation}`);
+  });
 }
 
 function commonPrefix(a: string, b: string): number {
@@ -270,8 +321,7 @@ function planBills(
         },
       ],
     };
-    checkText(rule, where, out.problems);
-    if (accountRef !== null) checkVersion("BILL", rule.versions[0], accounts, where, out.problems);
+    checkRule(rule, accounts, where, out.problems);
     rules.push(rule);
   }
   return rules;
@@ -294,7 +344,6 @@ function incomeRule(
     { accountRef: LAYOUT.savings, mode: "REMAINDER" as const, value: null },
   ];
   const first: PlannedVersion = { ...pattern, effectiveFrom: start, effectiveTo: null, amount: pay.net, note: null, allocations };
-  checkVersion("INCOME", first, accounts, where, out.problems);
 
   const given = pay.shares.reduce((sum, [, share]) => sum + toCents(share), 0n);
   if (pay.savingsShare !== null && given + toCents(pay.savingsShare) !== 10000n) {
@@ -315,10 +364,11 @@ function incomeRule(
       first.effectiveTo = change.value.endOn;
       const { next } = change.value;
       versions.push({ ...next, allocations });
-      checkVersion("INCOME", versions[1], accounts, `${where}, changed pay`, out.problems);
     }
   }
-  return { ref: layout.ref, name: layout.name, kind: "INCOME", category: null, notes: pay.notes, paysAccountRef: null, scheduled: false, versions };
+  const rule: PlannedRule = { ref: layout.ref, name: layout.name, kind: "INCOME", category: null, notes: pay.notes, paysAccountRef: null, scheduled: false, versions };
+  checkRule(rule, accounts, where, out.problems);
+  return rule;
 }
 
 function planIncome(settings: Settings, accounts: readonly PlannedAccount[], out: { problems: string[]; notes: string[] }): PlannedRule[] {

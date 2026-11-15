@@ -13,6 +13,8 @@ describe("parseChoices", () => {
   it("reads the three sections, each optional", () => {
     expect(parseChoices(JSON.stringify(STANDARD_CHOICES))).toEqual({ ok: true, choices: STANDARD_CHOICES });
     expect(parseChoices("{}")).toEqual({ ok: true, choices: { cards: {}, pays: {}, schedule: {} } });
+    // A file saved with a byte-order mark is still the same file.
+    expect(parseChoices(`﻿${JSON.stringify(STANDARD_CHOICES)}`)).toEqual({ ok: true, choices: STANDARD_CHOICES });
     expect(parseChoices('{"pays": {"CITI": null}}')).toEqual({ ok: true, choices: { cards: {}, pays: { CITI: null }, schedule: {} } });
   });
 
@@ -321,5 +323,29 @@ describe("planImport: questions and answers", () => {
   it("passes on the workbook's own reading problems", async () => {
     const plan = planned(await parsedWorkbook((spec) => (spec.Bills.rows[0][3] = "lots")));
     expect(plan.problems).toEqual(["Bills row 4: Amount is not an amount"]);
+  });
+});
+
+describe("planImport: problems the dry run must not miss", () => {
+  it("uses a duplicated Bill Schedule row once, and reports it", async () => {
+    const workbook = await parsedWorkbook((spec) => {
+      const rows = spec["Bill Schedule"].rows;
+      rows.splice(18, 0, [...rows[17]]); // CITI-20261120 again, with its $0 amount
+    });
+    const asked = planned(workbook, {});
+    expect(asked.problems).toEqual(["Bill Schedule row 22: same bill and date as row 21"]);
+    expect(asked.questions.filter((q) => q.section === "schedule" && q.key === "CITI-20261120")).toHaveLength(1);
+    const answered = planned(workbook);
+    expect(answered.overrides.filter((o) => o.ruleRef === "CITI" && o.scheduledOn === "2026-11-20")).toHaveLength(1);
+  });
+
+  it("refuses an amount the app's own rule form would refuse", async () => {
+    const plan = planned(await parsedWorkbook((spec) => (spec.Bills.rows[0][3] = 1e15)));
+    expect(plan.problems).toEqual(["Bills row 4 (MORT): amount Not an amount"]);
+  });
+
+  it("refuses text the app's own rule form would refuse", async () => {
+    const plan = planned(await parsedWorkbook((spec) => (spec.Bills.rows[0][9] = "x".repeat(501))));
+    expect(plan.problems).toEqual(["Bills row 4 (MORT): notes Too big: expected string to have <=500 characters"]);
   });
 });

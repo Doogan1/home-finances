@@ -93,6 +93,7 @@ describe("secrets stay on the server", () => {
       "src/features/import/plan.ts", // pure: what the import would create
       "src/features/import/schedule.ts", // pure: the Bill Schedule check
       "src/features/import/cash-flow.ts", // pure: the Cash Flow check, through the forecast engine
+      "src/features/import/report.ts", // pure: the importer's printout
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

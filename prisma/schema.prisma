@@ -226,6 +226,8 @@ model Account {
   cushion           Decimal?  @db.Decimal(19, 4)
   // Hand-entered accounts are archived, never deleted, so their history stays.
   archivedAt        DateTime?
+  // The workbook's Account ID (ASPEND, ...) for imported accounts; set only by the import.
+  importRef         String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -237,6 +239,7 @@ model Account {
   paidByRules Rule[]       @relation("RulePaysAccount")
 
   @@unique([plaidItemId, externalAccountId])
+  @@unique([householdId, importRef])
   // Lets Transaction prove its account belongs to the same Item.
   @@unique([id, plaidItemId])
   @@index([householdId])

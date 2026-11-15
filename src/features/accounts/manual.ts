@@ -1,5 +1,5 @@
 import "server-only";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { parseIsoDate, todayIn } from "@/lib/calendar-date";
 import { ACCOUNT_KINDS, type CreateAccountInput, type RecordBalancesInput, type UpdateAccountInput } from "./input";
 
@@ -30,7 +30,16 @@ export class AccountInputError extends Error {
   }
 }
 
-export async function createManualAccount(db: PrismaClient, householdId: string, input: CreateAccountInput) {
+/** The app's client, or a transaction the caller holds (the workbook import writes everything in one). */
+type Writer = PrismaClient | Prisma.TransactionClient;
+
+export async function createManualAccount(
+  db: Writer,
+  householdId: string,
+  input: CreateAccountInput,
+  // Set only by the workbook import: the workbook's Account ID.
+  options: { importRef?: string } = {},
+) {
   const kind = ACCOUNT_KINDS[input.kind];
   return db.account.create({
     data: {
@@ -42,6 +51,7 @@ export async function createManualAccount(db: PrismaClient, householdId: string,
       ownerLabel: input.ownerLabel,
       cushion: input.cushion,
       includeInForecast: kind.type !== "credit",
+      importRef: options.importRef ?? null,
     },
     select: { id: true },
   });
@@ -102,7 +112,17 @@ export async function recordBalances(
   input: RecordBalancesInput,
   now: Date = new Date(),
 ) {
-  const household = await db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
+  return db.$transaction((tx) => recordBalancesIn(tx, householdId, input, now));
+}
+
+/** recordBalances inside a transaction the caller holds. */
+export async function recordBalancesIn(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  input: RecordBalancesInput,
+  now: Date = new Date(),
+) {
+  const household = await tx.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
   if (!household.timeZone) throw new AccountInputError("time_zone_required");
   // ISO dates compare correctly as strings.
   if (input.asOfDate > todayIn(household.timeZone, now)) throw new AccountInputError("future_date");
@@ -110,27 +130,25 @@ export async function recordBalances(
   if (!asOfDate) throw new AccountInputError("future_date");
 
   const ids = input.entries.map((entry) => entry.accountId);
-  return db.$transaction(async (tx) => {
-    const accounts = await tx.account.findMany({
-      where: { id: { in: ids }, householdId },
-      select: { id: true, plaidItemId: true, archivedAt: true, currency: true },
-    });
-    if (accounts.length !== ids.length) throw new AccountInputError("account_not_found");
-    if (accounts.some((a) => a.plaidItemId !== null)) throw new AccountInputError("not_manual");
-    if (accounts.some((a) => a.archivedAt !== null)) throw new AccountInputError("archived");
-
-    const currency = new Map(accounts.map((a) => [a.id, a.currency]));
-    await tx.balanceSnapshot.createMany({
-      data: input.entries.map((entry) => ({
-        accountId: entry.accountId,
-        observedAt: now,
-        asOfDate,
-        current: entry.balance,
-        currency: currency.get(entry.accountId) ?? "USD",
-        source: "MANUAL" as const,
-        note: input.note,
-      })),
-    });
-    return { recorded: input.entries.length };
+  const accounts = await tx.account.findMany({
+    where: { id: { in: ids }, householdId },
+    select: { id: true, plaidItemId: true, archivedAt: true, currency: true },
   });
+  if (accounts.length !== ids.length) throw new AccountInputError("account_not_found");
+  if (accounts.some((a) => a.plaidItemId !== null)) throw new AccountInputError("not_manual");
+  if (accounts.some((a) => a.archivedAt !== null)) throw new AccountInputError("archived");
+
+  const currency = new Map(accounts.map((a) => [a.id, a.currency]));
+  await tx.balanceSnapshot.createMany({
+    data: input.entries.map((entry) => ({
+      accountId: entry.accountId,
+      observedAt: now,
+      asOfDate,
+      current: entry.balance,
+      currency: currency.get(entry.accountId) ?? "USD",
+      source: "MANUAL" as const,
+      note: input.note,
+    })),
+  });
+  return { recorded: input.entries.length };
 }

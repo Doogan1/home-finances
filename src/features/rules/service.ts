@@ -91,29 +91,33 @@ async function lockRule(tx: Tx, householdId: string, ruleId: string) {
 }
 
 export async function createRule(db: PrismaClient, householdId: string, input: CreateRuleInput) {
+  return db.$transaction((tx) => createRuleIn(tx, householdId, input));
+}
+
+/** createRule inside a transaction the caller holds. `importRef` is set only by the workbook import. */
+export async function createRuleIn(tx: Tx, householdId: string, input: CreateRuleInput, options: { importRef?: string } = {}) {
   const { version } = input;
   throwIf(scheduleProblem(version, version.effectiveFrom));
-  return db.$transaction(async (tx) => {
-    await checkAllocations(tx, householdId, input.kind, version.amount, version.allocations);
-    await checkPaysAccount(tx, householdId, input.kind, input.paysAccountId);
-    return tx.rule.create({
-      data: {
-        householdId,
-        name: input.name,
-        kind: input.kind,
-        category: input.category,
-        notes: input.notes,
-        paysAccountId: input.paysAccountId,
-        versions: {
-          create: {
-            effectiveFrom: dateOf(version.effectiveFrom),
-            ...versionColumns(version),
-            allocations: { create: allocationRows(version.allocations) },
-          },
+  await checkAllocations(tx, householdId, input.kind, version.amount, version.allocations);
+  await checkPaysAccount(tx, householdId, input.kind, input.paysAccountId);
+  return tx.rule.create({
+    data: {
+      householdId,
+      name: input.name,
+      kind: input.kind,
+      category: input.category,
+      notes: input.notes,
+      paysAccountId: input.paysAccountId,
+      importRef: options.importRef ?? null,
+      versions: {
+        create: {
+          effectiveFrom: dateOf(version.effectiveFrom),
+          ...versionColumns(version),
+          allocations: { create: allocationRows(version.allocations) },
         },
       },
-      select: { id: true },
-    });
+    },
+    select: { id: true },
   });
 }
 
@@ -129,26 +133,29 @@ export async function updateRule(db: PrismaClient, householdId: string, ruleId: 
 }
 
 export async function changeRuleFrom(db: PrismaClient, householdId: string, ruleId: string, input: ChangeFromInput) {
-  return db.$transaction(async (tx) => {
-    const rule = await lockRule(tx, householdId, ruleId);
-    const plan = planChangeFrom(rule.versions, input);
-    if (!plan.ok) throw new RuleInputError(plan.code);
-    const { endVersionId, endOn, next } = plan.value;
-    await checkAllocations(tx, householdId, rule.kind, next.amount, next.allocations);
-    // End the old version first: the new one may not overlap it, even for a moment.
-    await tx.ruleVersion.update({ where: { id: endVersionId }, data: { effectiveTo: dateOf(endOn) } });
-    const created = await tx.ruleVersion.create({
-      data: {
-        ruleId,
-        effectiveFrom: dateOf(next.effectiveFrom),
-        effectiveTo: optionalDate(next.effectiveTo),
-        ...versionColumns(next),
-        allocations: { create: allocationRows(next.allocations) },
-      },
-      select: { id: true },
-    });
-    return { versionId: created.id };
+  return db.$transaction((tx) => changeRuleFromIn(tx, householdId, ruleId, input));
+}
+
+/** changeRuleFrom inside a transaction the caller holds. */
+export async function changeRuleFromIn(tx: Tx, householdId: string, ruleId: string, input: ChangeFromInput) {
+  const rule = await lockRule(tx, householdId, ruleId);
+  const plan = planChangeFrom(rule.versions, input);
+  if (!plan.ok) throw new RuleInputError(plan.code);
+  const { endVersionId, endOn, next } = plan.value;
+  await checkAllocations(tx, householdId, rule.kind, next.amount, next.allocations);
+  // End the old version first: the new one may not overlap it, even for a moment.
+  await tx.ruleVersion.update({ where: { id: endVersionId }, data: { effectiveTo: dateOf(endOn) } });
+  const created = await tx.ruleVersion.create({
+    data: {
+      ruleId,
+      effectiveFrom: dateOf(next.effectiveFrom),
+      effectiveTo: optionalDate(next.effectiveTo),
+      ...versionColumns(next),
+      allocations: { create: allocationRows(next.allocations) },
+    },
+    select: { id: true },
   });
+  return { versionId: created.id };
 }
 
 export async function stopRule(db: PrismaClient, householdId: string, ruleId: string, input: StopInput) {

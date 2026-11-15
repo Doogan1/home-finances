@@ -47,6 +47,7 @@ const SERVER_ONLY_SPECIFIERS = [
   /^@prisma\//,
   /^@node-rs\/argon2$/,
   /^exceljs$/,
+  /^@\/features\/import\//,
   /^node:/,
 ];
 

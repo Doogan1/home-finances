@@ -291,8 +291,9 @@ per household and refuses a second time.
    It prints every account, balance, rule (for review) and per-date edit it would
    create, checks its rules against the Bill Schedule and its forecast against the
    Cash Flow sheet, and lists notes, **questions** and **problems**.
-4. **Answer the questions** in `imports/choices.json` (also ignored) and run the dry
-   run again until it lists no questions and no problems:
+4. **Answer the questions** in `imports/choices.json` (also ignored; the command reads
+   it by default, and `--choices imports/<file>.json` names another file in
+   `imports/`) and run the dry run again until it lists no questions and no problems:
 
    ```json
    {
@@ -306,7 +307,8 @@ per household and refuses a second time.
    `pays` which card a card-payment bill pays (a label only); `schedule` what to do
    with a schedule row whose amount differs from its bill (`skip` that occurrence,
    `confirm` the schedule's amount, or keep the `rule`'s). Fix problems in the
-   workbook itself.
+   workbook or in `choices.json`. When there is more than one household, add
+   `--household <id>` to every run to say which one to import into.
 5. **Back up** (on the host): `npm run backup`.
 6. **Apply:** the same command with `--apply`. It shows the same printout, asks you
    to type `yes`, and writes everything in one transaction (or nothing).

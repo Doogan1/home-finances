@@ -76,15 +76,38 @@ export type OverrideView = {
   note: string | null;
 };
 
-export async function listOverrides(db: PrismaClient, householdId: string, ruleId: string): Promise<OverrideView[]> {
-  const rows = await db.occurrenceOverride.findMany({ where: { householdId, ruleId }, orderBy: { scheduledOn: "asc" } });
-  return rows.map((row) => ({
+type OverrideRow = {
+  scheduledOn: Date;
+  status: OverrideView["status"];
+  confirmedAmount: { toFixed(): string } | null;
+  movedTo: Date | null;
+  note: string | null;
+};
+
+function toOverrideView(row: OverrideRow): OverrideView {
+  return {
     scheduledOn: toIsoDate(row.scheduledOn),
     status: row.status,
     confirmedAmount: row.confirmedAmount?.toFixed() ?? null,
     movedTo: row.movedTo ? toIsoDate(row.movedTo) : null,
     note: row.note,
-  }));
+  };
+}
+
+export async function listOverrides(db: PrismaClient, householdId: string, ruleId: string): Promise<OverrideView[]> {
+  const rows = await db.occurrenceOverride.findMany({ where: { householdId, ruleId }, orderBy: { scheduledOn: "asc" } });
+  return rows.map(toOverrideView);
+}
+
+export type HouseholdOverride = OverrideView & { ruleId: string };
+
+/** Every per-date edit of the household's rules that are not archived, for the forecast. */
+export async function listHouseholdOverrides(db: PrismaClient, householdId: string): Promise<HouseholdOverride[]> {
+  const rows = await db.occurrenceOverride.findMany({
+    where: { householdId, rule: { archivedAt: null } },
+    orderBy: [{ scheduledOn: "asc" }, { ruleId: "asc" }],
+  });
+  return rows.map((row) => ({ ruleId: row.ruleId, ...toOverrideView(row) }));
 }
 
 /** Accounts a rule can use now: entered by hand and not archived. */

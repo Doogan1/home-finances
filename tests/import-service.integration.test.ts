@@ -133,6 +133,13 @@ describe("importWorkbook", () => {
     expect(await counts()).toEqual(NOTHING);
   });
 
+  it("refuses a file that is not a readable workbook", async () => {
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => (i * 37) % 251);
+    await expect(run(false, answers, { workbook: bytes })).rejects.toMatchObject({ name: "ImportRefused", code: "unreadable_workbook" });
+    await expect(run(true, answers, { workbook: new Uint8Array() })).rejects.toThrow("unreadable_workbook");
+    expect(await counts()).toEqual(NOTHING);
+  });
+
   it("keeps to one household", async () => {
     const other = await seedPerson(owner, "other@example.test");
     await owner.household.update({ where: { id: other.householdId }, data: { timeZone: NY } });

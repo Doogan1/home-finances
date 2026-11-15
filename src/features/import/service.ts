@@ -9,7 +9,7 @@ import { parseIsoDate, type IsoDate } from "@/lib/calendar-date";
 import { compareCashFlow, type CashFlowComparison } from "./cash-flow";
 import { NO_CHOICES, parseChoices } from "./choices";
 import { parseWorkbook } from "./parse";
-import { planImport, type ImportPlan, type PlannedAllocation, type PlannedVersion } from "./plan";
+import { planImport, scheduleBody, type ImportPlan, type PlannedAllocation } from "./plan";
 import { compareSchedule, type ScheduleComparison } from "./schedule";
 import { readSheets } from "./workbook";
 
@@ -27,7 +27,8 @@ export type ImportRefusal =
   | "household_not_found"
   | "unsettled"
   | "time_zone_required"
-  | "already_imported";
+  | "already_imported"
+  | "unreadable_workbook";
 
 export class ImportRefused extends Error {
   constructor(readonly code: ImportRefusal) {
@@ -60,19 +61,6 @@ export async function hasImportedRows(db: Reader, householdId: string): Promise<
   const accounts = await db.account.count({ where: { householdId, importRef: { not: null } } });
   const rules = await db.rule.count({ where: { householdId, importRef: { not: null } } });
   return accounts + rules > 0;
-}
-
-function scheduleBody(v: PlannedVersion) {
-  switch (v.recurrence) {
-    case "ONCE":
-      return { recurrence: v.recurrence, anchorDate: v.anchorDate };
-    case "WEEKLY":
-      return { recurrence: v.recurrence, interval: v.interval, anchorDate: v.anchorDate };
-    case "MONTHLY":
-      return { recurrence: v.recurrence, interval: v.interval, anchorDate: v.anchorDate, dayOfMonth: v.dayOfMonth };
-    case "TWICE_MONTHLY":
-      return { recurrence: v.recurrence, anchorDate: v.anchorDate, dayOfMonth: v.dayOfMonth, secondDay: v.secondDay };
-  }
 }
 
 export type Applied = { accounts: number; snapshots: number; rules: number; versions: number; overrides: number };
@@ -166,7 +154,7 @@ export async function importWorkbook(
   input: { workbook: Uint8Array; choicesText: string | null; apply: boolean; householdId?: string; now?: Date },
 ): Promise<ImportOutcome> {
   const household = await resolveHousehold(db, input.householdId);
-  const workbook = parseWorkbook(await readSheets(input.workbook));
+  const workbook = parseWorkbook(await readSheets(input.workbook).catch(() => Promise.reject(new ImportRefused("unreadable_workbook"))));
   const choices = input.choicesText === null ? { ok: true as const, choices: NO_CHOICES } : parseChoices(input.choicesText);
   // The UTC date: the household may have no time zone yet. Applying checks again in the household's zone.
   const today = (input.now ?? new Date()).toISOString().slice(0, 10) as IsoDate;

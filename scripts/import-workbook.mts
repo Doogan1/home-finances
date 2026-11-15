@@ -29,6 +29,7 @@ const REFUSALS: Record<ImportRefusal, string> = {
   unsettled: "Nothing was written: answer every question and fix every problem listed above, then run again.",
   time_zone_required: "Nothing was written: set the household's time zone first (Home asks for it), then run again.",
   already_imported: "Nothing was written: this household already has imported accounts or rules, and the import runs only once.",
+  unreadable_workbook: "The workbook could not be read; check it is an .xlsx file.",
 };
 
 function parseArgs(args: string[]) {
@@ -82,6 +83,8 @@ async function main() {
       return;
     }
     if (open > 0) throw new ImportRefused("unsettled");
+    // Refuse before the backup question; applyPlan checks again inside the lock.
+    if (outcome.alreadyImported) throw new ImportRefused("already_imported");
     const answer = await promptLine("\nHave you made a backup since your last change? Type yes to write the import: ");
     if (answer !== "yes") throw new UserSetupError("Not applied. Run `npm run backup` on the host, then run again with --apply");
     // The plan just printed is exactly what is written.

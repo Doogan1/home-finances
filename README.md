@@ -35,6 +35,15 @@ missing balances, "Did it clear?" for open items on a balance's date or in the
 45 days before it, and per-date edits a rule no longer produces. The forecast is a pure
 function and nothing it computes is stored.
 
+**Workbook import.** `npm run import:workbook -- imports/<file>.xlsx` (in the app
+container) brings the household's spreadsheet in once: accounts, balances, pay,
+bills and per-date edits. It is a dry run unless given `--apply`, prints every
+rule for review, checks its result against the workbook's own Bill Schedule and
+Cash Flow, and asks what it cannot work out (answers go in `imports/choices.json`).
+`--apply` writes everything in one transaction and refuses while any question is
+open or if the household was already imported. `imports/` is ignored by git and
+by the Docker build. Steps: [docs/local-development.md](docs/local-development.md#importing-the-workbook).
+
 | Read this | For |
 | --- | --- |
 | [docs/local-development.md](docs/local-development.md) | day-to-day operation: restarts, tests, **backups and restore**, **encryption-key backup and rotation**, Sandbox testing, **going live**, troubleshooting |
@@ -262,6 +271,7 @@ src/features/plaid/                  Plaid gateway (SDK), link flow, account ref
 src/features/accounts/               hand-entered accounts and balances (service, input parsing, HTTP helpers); pages in src/app/accounts/
 src/features/rules/                  bills and income: the date calculations, splits and change planning (pure, shared with the forms), the request bodies, and the server-only reads and writes; pages in src/app/bills/
 src/features/forecast/               the forecast: latest balances, occurrences with edits, the daily series, Needs attention and chart geometry (pure), and the server-only loader
+src/features/import/                 the workbook import: reading the xlsx, the sheets, choices.json, the plan and its two checks (pure), and the server-only writer
 src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
 src/lib/data/                       household-scoped data access helpers
@@ -274,6 +284,7 @@ scripts/rotate-token-key.mts        `npm run keys:rotate` (re-encrypt stored tok
 scripts/backup.mjs, restore.mjs     `npm run backup` / `restore` (host-side; helpers in scripts/lib/backup.mjs)
 scripts/verify-production-image.mjs `npm run verify:image`
 scripts/preflight-live.mts          `npm run preflight`
+scripts/import-workbook.mts         `npm run import:workbook` (dry run unless --apply)
 compose.https.yaml, docker/caddy/   opt-in local https (a TLS proxy); see docs/local-https.md
 docs/                               spec, plan, and the guides listed at the top of this file
 playwright.config.ts, tests/e2e/    browser-test setup (*.e2e.spec.ts)

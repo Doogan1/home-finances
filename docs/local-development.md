@@ -22,6 +22,7 @@ VM, see [future-deployment.md](future-deployment.md).
 | Stop one (leaving a job, cancelling a service) | Open it → **Stop on…**; undo with **Edit this version** and a blank "Ends on" |
 | See where each account is heading | Home: the chart shows the next 90 days' end-of-day balances; when there is more than one account, pick another above it |
 | Find out what needs a look | Home → **Needs attention** (low days, estimates due soon, balances to update, "Did it clear?") |
+| Import the workbook (once) | [see below](#importing-the-workbook) |
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |
 | Rotate the token-encryption key | [see below](#rotating-the-token-encryption-key) |
@@ -270,6 +271,47 @@ order; `npm run preflight` (below) checks the parts it can.
 The first real link is always your own explicit click; the app never does it for
 you. Do not point an internet-reachable copy at real accounts until the items in
 [future-deployment.md](future-deployment.md) are done.
+
+## Importing the workbook
+
+A one-time command brings the household's spreadsheet into the app: its
+accounts, balances, pay, bills and the answers it needs from you. It runs once
+per household and refuses a second time.
+
+1. **Copy the file into `imports/`** in the repository folder (create the folder
+   if needed). `imports/` is ignored by git and by the Docker build, and the
+   importer reads nothing outside it and contacts nothing.
+2. **Set the household's time zone** if Home still asks for it.
+3. **Dry run** (writes nothing):
+
+   ```bash
+   docker compose exec app npm run import:workbook -- imports/Home_Finances_Simplified_v2.xlsx
+   ```
+
+   It prints every account, balance, rule (for review) and per-date edit it would
+   create, checks its rules against the Bill Schedule and its forecast against the
+   Cash Flow sheet, and lists notes, **questions** and **problems**.
+4. **Answer the questions** in `imports/choices.json` (also ignored) and run the dry
+   run again until it lists no questions and no problems:
+
+   ```json
+   {
+     "cards": { "<bill id>": "<card Account ID>" },
+     "pays": { "<bill id>": "<card Account ID, or null>" },
+     "schedule": { "<Bill Schedule ID>": "skip | confirm | rule" }
+   }
+   ```
+
+   `cards` says which card each bill "Included in card payment" is charged to;
+   `pays` which card a card-payment bill pays (a label only); `schedule` what to do
+   with a schedule row whose amount differs from its bill (`skip` that occurrence,
+   `confirm` the schedule's amount, or keep the `rule`'s). Fix problems in the
+   workbook itself.
+5. **Back up** (on the host): `npm run backup`.
+6. **Apply:** the same command with `--apply`. It shows the same printout, asks you
+   to type `yes`, and writes everything in one transaction (or nothing).
+7. Review every imported rule on **Bills & income**, and the forecast on **Home**.
+   Then delete the files in `imports/` if you no longer need them there.
 
 ## Troubleshooting
 

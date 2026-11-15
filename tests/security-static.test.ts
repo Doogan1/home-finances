@@ -85,6 +85,7 @@ describe("secrets stay on the server", () => {
       "src/features/forecast/occurrences.ts", // pure: occurrences with per-date edits
       "src/features/forecast/engine.ts", // pure: the forecast itself
       "src/features/forecast/attention.ts", // pure: Needs attention and the next 7 days
+      "src/features/forecast/chart.ts", // pure: chart geometry
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

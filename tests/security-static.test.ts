@@ -89,6 +89,9 @@ describe("secrets stay on the server", () => {
       "src/features/forecast/chart.ts", // pure: chart geometry
       "src/features/import/workbook.ts", // reads a workbook's bytes into plain values; no database, no files
       "src/features/import/parse.ts", // pure: sheets to typed rows
+      "src/features/import/choices.ts", // zod schema for choices.json only
+      "src/features/import/plan.ts", // pure: what the import would create
+      "src/features/import/schedule.ts", // pure: the Bill Schedule check
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

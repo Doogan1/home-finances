@@ -83,6 +83,7 @@ describe("secrets stay on the server", () => {
       "src/features/rules/form-drafts.ts", // pure form state helpers
       "src/features/forecast/snapshots.ts", // pure: picks the latest balance
       "src/features/forecast/occurrences.ts", // pure: occurrences with per-date edits
+      "src/features/forecast/engine.ts", // pure: the forecast itself
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);

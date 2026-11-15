@@ -46,6 +46,7 @@ const SERVER_ONLY_SPECIFIERS = [
   /^pg$/,
   /^@prisma\//,
   /^@node-rs\/argon2$/,
+  /^exceljs$/,
   /^node:/,
 ];
 
@@ -86,6 +87,7 @@ describe("secrets stay on the server", () => {
       "src/features/forecast/engine.ts", // pure: the forecast itself
       "src/features/forecast/attention.ts", // pure: Needs attention and the next 7 days
       "src/features/forecast/chart.ts", // pure: chart geometry
+      "src/features/import/workbook.ts", // reads a workbook's bytes into plain values; no database, no files
       "src/features/plaid/types.ts", // types and error classes only
       "src/features/plaid/format.ts", // pure display helpers
     ]);
@@ -129,8 +131,8 @@ describe("secrets stay on the server", () => {
     const gitignore = readFileSync(path.join(ROOT, ".gitignore"), "utf8");
     const dockerignore = readFileSync(path.join(ROOT, ".dockerignore"), "utf8");
 
-    for (const entry of [".env*", "/backups/", "*.dump"]) expect(gitignore, `.gitignore: ${entry}`).toContain(entry);
-    for (const entry of [".env", "backups", "*.dump"]) expect(dockerignore, `.dockerignore: ${entry}`).toContain(entry);
+    for (const entry of [".env*", "/backups/", "*.dump", "/imports/"]) expect(gitignore, `.gitignore: ${entry}`).toContain(entry);
+    for (const entry of [".env", "backups", "*.dump", "imports"]) expect(dockerignore, `.dockerignore: ${entry}`).toContain(entry);
     const dockerfile = readFileSync(path.join(ROOT, "Dockerfile"), "utf8");
     expect(dockerfile).not.toMatch(/COPY[^\n]*\.env\b/);
   });

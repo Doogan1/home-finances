@@ -58,3 +58,6 @@ next-env.d.ts
 
 # local HTTPS certificate and key (private; see docs/local-https.md)
 /certs/
+
+# the workbook import's input: the household's real finances (see docs/local-development.md)
+/imports/

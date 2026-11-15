@@ -103,7 +103,10 @@ describe("loadForecastInput", () => {
     const other = await seedPerson(owner, "other@example.test");
     const theirs = await account("Their checking", {}, other.householdId);
     await manual(theirs, "2026-11-14", "2026-11-14T15:00:00Z", "99");
-    await createRule(app, other.householdId, mortgage(theirs, "Their mortgage"));
+    const { id: theirRule } = await createRule(app, other.householdId, mortgage(theirs, "Their mortgage"));
+    await owner.occurrenceOverride.create({
+      data: { householdId: other.householdId, ruleId: theirRule, scheduledOn: d("2026-12-01"), confirmedAmount: "1900" },
+    });
     const live = await owner.plaidItem.create({
       data: { householdId, environment: "PRODUCTION", plaidItemId: "item_live", status: "ACTIVE" },
     });
@@ -114,6 +117,7 @@ describe("loadForecastInput", () => {
     expect(sandbox.accounts.map((a) => a.name)).toEqual(["Ally Spend", "Amex"]);
     expect([...sandbox.snapshots.keys()]).toEqual([]);
     expect(sandbox.rules).toEqual([]);
+    expect(sandbox.overrides).toEqual([]);
 
     const production = await load("PRODUCTION");
     expect(production.accounts.map((a) => a.name)).toEqual(["Ally Spend", "Amex", "Live checking"]);

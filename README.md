@@ -25,6 +25,16 @@ nothing needs regenerating. "Change from…" ends the current version and starts
 an edited copy; "Stop on…" sets an end date; per-date edits are kept across
 versions. Income can be split across accounts, with one account taking the rest.
 
+**Forecast.** Home projects every cash account's end-of-day balance for the
+next 90 days, starting from its latest balance (a hand-entered balance is true
+at the end of its date; a bank balance is dated by the day it was observed).
+Occurrences after that date count, Paid ones included; Skipped ones never do.
+Bills paid from a card move no cash. Home also lists what needs attention: days
+below the cushion or below zero, estimates due in the next 14 days, stale or
+missing balances, "Did it clear?" for open items on or just before a balance's
+date, and per-date edits a rule no longer produces. The forecast is a pure
+function and nothing it computes is stored.
+
 | Read this | For |
 | --- | --- |
 | [docs/local-development.md](docs/local-development.md) | day-to-day operation: restarts, tests, **backups and restore**, **encryption-key backup and rotation**, Sandbox testing, **going live**, troubleshooting |
@@ -251,6 +261,7 @@ src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
 src/features/plaid/                  Plaid gateway (SDK), link flow, account refresh, formatting
 src/features/accounts/               hand-entered accounts and balances (service, input parsing, HTTP helpers); pages in src/app/accounts/
 src/features/rules/                  bills and income: the date calculations, splits and change planning (pure, shared with the forms), the request bodies, and the server-only reads and writes; pages in src/app/bills/
+src/features/forecast/               the forecast: latest balances, occurrences with edits, the daily series, Needs attention and chart geometry (pure), and the server-only loader
 src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing
 src/lib/data/                       household-scoped data access helpers

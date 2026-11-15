@@ -20,7 +20,7 @@ VM, see [future-deployment.md](future-deployment.md).
 | Add a bill or an income stream | Bills & income → **+ Add bill** or **+ Add income** |
 | Change a bill or paycheck from a date on (a raise, a new amount) | Open it → **Change from…** (the old version ends the day before) |
 | Stop one (leaving a job, cancelling a service) | Open it → **Stop on…**; undo with **Edit this version** and a blank "Ends on" |
-| See where each account is heading | Home: the chart shows the next 90 days' end-of-day balances; pick another account above it |
+| See where each account is heading | Home: the chart shows the next 90 days' end-of-day balances; when there is more than one account, pick another above it |
 | Find out what needs a look | Home → **Needs attention** (low days, estimates due soon, balances to update, "Did it clear?") |
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |

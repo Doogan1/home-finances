@@ -31,8 +31,8 @@ at the end of its date; a bank balance is dated by the day it was observed).
 Occurrences after that date count, Paid ones included; Skipped ones never do.
 Bills paid from a card move no cash. Home also lists what needs attention: days
 below the cushion or below zero, estimates due in the next 14 days, stale or
-missing balances, "Did it clear?" for open items on or just before a balance's
-date, and per-date edits a rule no longer produces. The forecast is a pure
+missing balances, "Did it clear?" for open items on a balance's date or in the
+45 days before it, and per-date edits a rule no longer produces. The forecast is a pure
 function and nothing it computes is stored.
 
 | Read this | For |

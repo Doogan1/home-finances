@@ -30,12 +30,22 @@ describe("cell conversions", () => {
     expect(() => dateOf("soon", "Due date")).toThrow("Due date is not a date");
   });
 
+  it("rejects a serial outside Excel's dates and an invalid date, instead of inventing a date", () => {
+    expect(() => dateOf(20261102, "Due date")).toThrow("Due date is not a date");
+    expect(() => dateOf(1e9, "Due date")).toThrow("Due date is not a date");
+    expect(() => dateOf(-5, "Due date")).toThrow("Due date is not a date");
+    expect(() => dateOf(Number.NaN, "Due date")).toThrow("Due date is not a date");
+    expect(() => dateOf(new Date("not a date"), "Due date")).toThrow("Due date is not a date");
+    expect(dateOf(2958465, "x")).toBe("9999-12-31"); // Excel's last date is still a date
+  });
+
   it("reads a day of the month", () => {
     expect(dayOf(31, "x")).toBe(31);
     expect(dayOf("5", "x")).toBe(5);
     expect(dayOf(null, "x")).toBeNull();
     expect(() => dayOf(32, "Due day")).toThrow("Due day is not a day of the month (1 to 31)");
     expect(() => dayOf(2.5, "Due day")).toThrow();
+    expect(() => dayOf(new Date("not a date"), "Due day")).toThrow("Due day is not a day of the month (1 to 31)");
   });
 
   it("reads a share stored as a fraction or typed as a percentage", () => {
@@ -171,6 +181,30 @@ describe("parseWorkbook", () => {
       "Bill Schedule row 5: Expected has no saved amount",
     ]);
     expect(workbook.bills.map((b) => b.id)).not.toContain("DAYCARE");
+  });
+
+  it("turns a date cell that is not a date into a problem naming the row, and never throws", async () => {
+    const serial = await parsed((spec) => {
+      spec["Balance History"].rows[0][2] = 20261102; // a date cell holding a plain number far past 9999
+    });
+    expect(serial.problems).toEqual(["Balance History row 4: As-of date is not a date"]);
+    expect(serial.history.map((h) => h.row)).toEqual([5, 6]);
+
+    const huge = await parsed((spec) => {
+      spec["Balance History"].rows[0][2] = 1e9;
+    });
+    expect(huge.problems).toEqual(["Balance History row 4: As-of date is not a date"]);
+
+    const invalid = await parsed((spec) => {
+      spec["Balance History"].rows[0][2] = new Date("not a date");
+    });
+    expect(invalid.problems).toEqual(["Balance History row 4: As-of date is not a date"]);
+
+    const blankId = await parsed((spec) => {
+      spec.Accounts.rows[0][0] = new Date("not a date"); // an invalid date in column A
+    });
+    expect(blankId.problems).toEqual(["Accounts row 4: A cell is not a date"]);
+    expect(blankId.accounts.map((a) => a.row)).toEqual([5, 6, 7, 8, 9, 10]);
   });
 
   it("needs the Accounts, Settings, Bills and Bill Schedule sheets, but not Cash Flow", async () => {

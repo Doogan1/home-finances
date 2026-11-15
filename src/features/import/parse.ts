@@ -27,9 +27,27 @@ const problem = (message: string): never => {
   throw new CellProblem(message);
 };
 
+/** Excel's day 0 is 1899-12-30; 25569 is 1970-01-01. */
+const EXCEL_EPOCH_OFFSET = 25569;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Excel's last date, 9999-12-31, as a serial. */
+const LAST_SERIAL = 2958465;
+
+/**
+ * The calendar date of a UTC instant. Every path that turns a date cell into an
+ * IsoDate goes through here, so a value that is not a date in 1900 to 9999 (an
+ * invalid Date, or a number that was never a serial) is a problem, not a crash
+ * or a made-up date.
+ */
+function calendarDay(time: number, what: string): IsoDate {
+  const date = new Date(time);
+  if (!Number.isFinite(time) || date.getUTCFullYear() < 1900 || date.getUTCFullYear() > 9999) problem(`${what} is not a date`);
+  return toIsoDate(date);
+}
+
 export function textOf(cell: Cell): string | null {
   if (cell === null) return null;
-  if (cell instanceof Date) return toIsoDate(cell);
+  if (cell instanceof Date) return calendarDay(cell.getTime(), "A cell");
   const text = String(cell).replace(/\s+/g, " ").trim();
   return text === "" ? null : text;
 }
@@ -54,15 +72,14 @@ export function moneyOf(cell: Cell, what: string): string | null {
 
 const requiredMoney = (cell: Cell, what: string): string => moneyOf(cell, what) ?? problem(`${what} is blank`);
 
-/** Excel's day 0 is 1899-12-30; 25569 is 1970-01-01. */
-const EXCEL_EPOCH_OFFSET = 25569;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /** A calendar date from a date cell (its UTC day, which is how Excel dates are read), a date serial or "YYYY-MM-DD". */
 export function dateOf(cell: Cell, what: string): IsoDate | null {
   if (cell === null || (typeof cell === "string" && cell.trim() === "")) return null;
-  if (cell instanceof Date) return toIsoDate(cell);
-  if (typeof cell === "number" && cell > 0) return toIsoDate(new Date((Math.floor(cell) - EXCEL_EPOCH_OFFSET) * DAY_MS));
+  if (cell instanceof Date) return calendarDay(cell.getTime(), what);
+  if (typeof cell === "number") {
+    if (!(cell >= 1 && cell <= LAST_SERIAL)) problem(`${what} is not a date`);
+    return calendarDay((Math.floor(cell) - EXCEL_EPOCH_OFFSET) * DAY_MS, what);
+  }
   if (typeof cell === "string" && parseIsoDate(cell.trim())) return cell.trim();
   return problem(`${what} is not a date`);
 }
@@ -72,7 +89,10 @@ const requiredDate = (cell: Cell, what: string): IsoDate => dateOf(cell, what) ?
 /** A day of the month, 1 to 31, or null when blank. */
 export function dayOf(cell: Cell, what: string): number | null {
   if (cell === null || (typeof cell === "string" && cell.trim() === "")) return null;
-  if (cell instanceof Date) return cell.getUTCDate();
+  if (cell instanceof Date) {
+    if (Number.isNaN(cell.getTime())) problem(`${what} is not a day of the month (1 to 31)`);
+    return cell.getUTCDate();
+  }
   const value = typeof cell === "string" ? Number(cell.trim()) : cell;
   if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 31) return value;
   return problem(`${what} is not a day of the month (1 to 31)`);
@@ -180,7 +200,17 @@ const pick = <T>(table: Record<string, T>, cell: Cell, what: string): T =>
 /** Each data row (from row 4 to the first with nothing in column A), read by `read`; unreadable rows become problems. */
 function table<T>(grid: Grid, sheet: string, problems: string[], read: (cell: (column: number) => Cell, row: number) => T): T[] {
   const rows: T[] = [];
-  for (let row = FIRST_ROW; textOf(cellAt(grid, row, 1)) !== null; row++) {
+  for (let row = FIRST_ROW; ; row++) {
+    let id: string | null;
+    try {
+      id = textOf(cellAt(grid, row, 1));
+    } catch (error) {
+      if (!(error instanceof CellProblem)) throw error;
+      // Column A is unreadable, so the row is not blank: it is a problem, and the table goes on.
+      problems.push(`${sheet} row ${row}: ${error.message}`);
+      continue;
+    }
+    if (id === null) break;
     try {
       rows.push(read((column) => cellAt(grid, row, column), row));
     } catch (error) {

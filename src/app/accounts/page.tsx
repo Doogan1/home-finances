@@ -146,7 +146,7 @@ async function Accounts() {
                   <AccountEditor
                     id={account.id}
                     manual={manual}
-                    isCredit={account.type === "credit"}
+                    isCash={account.type === "depository"}
                     name={account.name}
                     ownerLabel={account.ownerLabel}
                     cushion={account.cushion?.toFixed() ?? null}

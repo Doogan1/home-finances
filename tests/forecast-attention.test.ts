@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attentionCount, needsAttention, upcoming } from "@/features/forecast/attention";
 import { buildForecast, type ForecastInput } from "@/features/forecast/engine";
-import { ACCOUNTS, MORTGAGE, PAYCHECK, STREAMING, TODAY, edit, forecastInput, rule, snapshot, version } from "./helpers/forecast-fixtures";
+import { ACCOUNTS, MORTGAGE, PAYCHECK, STREAMING, TODAY, account, edit, forecastInput, rule, snapshot, version } from "./helpers/forecast-fixtures";
 
 const attentionFor = (input: ForecastInput) => needsAttention(buildForecast(input), input);
 const upcomingFor = (input: ForecastInput) => upcoming(buildForecast(input), input);
@@ -116,6 +116,18 @@ describe("upcoming", () => {
         ],
       ],
     ]);
+  });
+
+  it("does not treat a share landing in a loan account as cash", () => {
+    const loan = account("loan", { type: "loan", subtype: "mortgage" });
+    const toLoan = rule({
+      id: "loanpay",
+      name: "Loan payment",
+      versions: [version({ id: "lv", anchorDate: "2026-11-15", dayOfMonth: 15, allocations: [{ accountId: "loan", mode: "REMAINDER", value: null }] })],
+    });
+    const input = forecastInput({ accounts: [...ACCOUNTS, loan], rules: [toLoan] });
+    expect(upcomingFor(input)).toEqual([]);
+    expect(attentionFor(input).estimates).toEqual([]);
   });
 
   it("includes cash accounts left out of the forecast, and leaves out Skipped occurrences", () => {

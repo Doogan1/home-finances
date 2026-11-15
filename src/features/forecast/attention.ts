@@ -2,6 +2,7 @@ import { addDays, daysBetween, type IsoDate } from "@/lib/calendar-date";
 import type { Cents } from "@/lib/cents";
 import {
   CLEAR_LOOKBACK_DAYS,
+  isCashAccount,
   type AccountSeries,
   type Forecast,
   type ForecastAccount,
@@ -42,11 +43,11 @@ const isOpen = (occurrence: ComputedOccurrence) => occurrence.status === "PLANNE
 const charted = (forecast: Forecast) => forecast.accounts.filter((a): a is AccountSeries => a.kind === "forecast");
 const accountsById = (input: ForecastInput) => new Map(input.accounts.map((a) => [a.id, a]));
 
-/** The shares of an occurrence that land in cash (non-credit) accounts, signed. */
+/** The shares of an occurrence that land in cash (depository) accounts, signed. */
 export function cashShares(occurrence: ComputedOccurrence, byId: ReadonlyMap<string, ForecastAccount>): CashShare[] {
   return occurrence.shares.flatMap((share) => {
     const account = byId.get(share.accountId);
-    if (!account || account.type === "credit" || share.cents === 0n) return [];
+    if (!account || !isCashAccount(account) || share.cents === 0n) return [];
     return [{ account, cents: signed(occurrence, share.cents) }];
   });
 }

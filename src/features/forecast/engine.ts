@@ -13,7 +13,7 @@ import type { LatestSnapshot } from "./snapshots";
  *   account's balance date and it is not Skipped. Paid ones count too: Paid
  *   means the money has left, and the balance predates it.
  * - Income adds each account's share; a bill subtracts it. Items on one day net out.
- * - Credit accounts are never forecast, so a bill paid from a card moves no cash.
+ * - Only depository accounts are forecast, so a bill paid from a card or a loan moves no cash.
  */
 
 export const FORECAST_DAYS = 90;
@@ -65,8 +65,14 @@ export type AccountSeries = {
 export type AccountForecast = NeedsBalance | AccountSeries;
 export type Forecast = { today: IsoDate; end: IsoDate; accounts: AccountForecast[]; occurrences: ComputedOccurrence[] };
 
+/** Only depository (cash) accounts hold money the household can spend. Cards, loans and investments are never cash. */
+export function isCashAccount(account: Pick<ForecastAccount, "type">): boolean {
+  return account.type === "depository";
+}
+
+/** A cash account that is switched on, not archived and still reported by its bank. */
 export function isForecastAccount(account: ForecastAccount): boolean {
-  return account.type !== "credit" && account.includeInForecast && !account.archived && account.active;
+  return isCashAccount(account) && account.includeInForecast && !account.archived && account.active;
 }
 
 const rank = (account: ForecastAccount) => (account.cushion !== null ? 0 : account.subtype === "checking" ? 1 : 2);

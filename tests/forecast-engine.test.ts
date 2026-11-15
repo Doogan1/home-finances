@@ -54,6 +54,32 @@ describe("buildForecast", () => {
     expect(series(forecast, "spend").lowest.cents).toBe(200000n);
   });
 
+  it("handles a balance dated after today: the series still runs from today, flat until the balance date", () => {
+    // Balance is dated Nov 17 (today is Nov 14). The Nov 20 paycheck is the first occurrence after it.
+    const forecast = buildForecast(
+      forecastInput({ rules: [PAYCHECK], snapshots: new Map([["spend", snapshot("spend", "2026-11-17", "2000")], ["savings", snapshot("savings", TODAY, "500")]]) }),
+    );
+    const spend = series(forecast, "spend");
+    expect(spend.days).toHaveLength(90);
+    expect(spend.days[0]).toMatchObject({ date: TODAY, opening: 200000n, closing: 200000n, items: [] });
+    for (const date of ["2026-11-15", "2026-11-17", "2026-11-19"]) expect(closing(forecast, "spend", date)).toBe(200000n);
+    // The first occurrence after the balance date (Nov 20) is the first to count.
+    expect(day(forecast, "spend", "2026-11-20").closing).toBe(270000n);
+  });
+
+  it("handles a balance dated after the end of the window: flat for the whole window", () => {
+    const forecast = buildForecast(
+      forecastInput({ snapshots: new Map([["spend", snapshot("spend", "2027-03-01", "2000")], ["savings", snapshot("savings", TODAY, "500")]]) }),
+    );
+    const spend = series(forecast, "spend");
+    expect(spend.days).toHaveLength(90);
+    expect(spend.days[0].date).toBe(TODAY);
+    expect(spend.days[89].date).toBe("2027-02-11");
+    expect(new Set(spend.days.map((d) => d.closing))).toEqual(new Set([200000n]));
+    expect(spend.days.every((d) => d.items.length === 0)).toBe(true);
+    expect(spend.lowest).toEqual({ date: TODAY, cents: 200000n });
+  });
+
   it("nets out items on the same day", () => {
     const water = rule({
       id: "water",
@@ -74,6 +100,37 @@ describe("buildForecast", () => {
     const forecast = buildForecast(forecastInput());
     expect(forecast.accounts.map((a) => a.account.id)).toEqual(["spend", "savings"]);
     expect(day(forecast, "spend", "2026-11-15").items).toEqual([]);
+  });
+
+  it("never forecasts a loan or an investment account, even with include-in-forecast on", () => {
+    const loan = account("loan", { type: "loan", subtype: "mortgage" });
+    const brokerage = account("brokerage", { type: "investment", subtype: "brokerage" });
+    const forecast = buildForecast(
+      forecastInput({
+        accounts: [...ACCOUNTS, loan, brokerage],
+        snapshots: new Map([
+          ["spend", snapshot("spend", TODAY, "2000")],
+          ["savings", snapshot("savings", "2026-11-10", "500")],
+          ["loan", snapshot("loan", TODAY, "250000")],
+          ["brokerage", snapshot("brokerage", TODAY, "12000")],
+        ]),
+      }),
+    );
+    expect(forecast.accounts.map((a) => a.account.id)).toEqual(["spend", "savings"]);
+  });
+
+  it("moves no cash for a bill paid from a card or a loan", () => {
+    const toLoan = rule({
+      id: "loanpay",
+      name: "Loan payment",
+      versions: [version({ id: "lv", anchorDate: "2026-11-15", dayOfMonth: 15, allocations: [{ accountId: "loan", mode: "REMAINDER", value: null }] })],
+    });
+    const accounts = [...ACCOUNTS, account("loan", { type: "loan", subtype: "mortgage" })];
+    const plain = buildForecast(forecastInput({ accounts, rules: [] }));
+    const withBills = buildForecast(forecastInput({ accounts, rules: [STREAMING, toLoan] }));
+    for (const id of ["spend", "savings"]) {
+      expect(series(withBills, id).days.map((d) => [d.date, d.closing, d.items])).toEqual(series(plain, id).days.map((d) => [d.date, d.closing, d.items]));
+    }
   });
 
   it("still counts a Paid occurrence after the balance, and never a Skipped one", () => {

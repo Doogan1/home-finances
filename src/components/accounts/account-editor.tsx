@@ -7,7 +7,7 @@ import { postJson } from "../post-json";
 type Props = {
   id: string;
   manual: boolean;
-  isCredit: boolean;
+  isCash: boolean;
   name: string;
   ownerLabel: string | null;
   cushion: string | null;
@@ -28,7 +28,7 @@ export function AccountEditor(props: Props) {
       cushion: String(data.get("cushion") ?? ""),
     };
     if (props.manual) body.name = String(data.get("name") ?? "");
-    if (!props.isCredit) body.includeInForecast = data.get("includeInForecast") === "on";
+    if (props.isCash) body.includeInForecast = data.get("includeInForecast") === "on";
     const result = await postJson(`/api/accounts/${props.id}/update`, body);
     if (!result.ok) return setError(result.message);
     setOpen(false);
@@ -79,7 +79,7 @@ export function AccountEditor(props: Props) {
         Cushion
         <input name="cushion" defaultValue={props.cushion ?? ""} inputMode="decimal" />
       </label>
-      {!props.isCredit && (
+      {props.isCash && (
         <label className="checkbox">
           <input type="checkbox" name="includeInForecast" defaultChecked={props.includeInForecast} /> Include in the forecast
         </label>

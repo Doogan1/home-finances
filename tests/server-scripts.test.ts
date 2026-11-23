@@ -37,6 +37,12 @@ describe("server shell scripts", () => {
     expect(text).toMatch(/^trap 'rm -f "\$work"\/\*\.dump .*' EXIT$/m);
   });
 
+  it("backup.sh takes the lock before it installs its cleanup trap", () => {
+    const text = readFileSync("deploy/server/backup.sh", "utf8");
+    expect(text).toContain("flock -n 9");
+    expect(text.indexOf("flock -n 9")).toBeLessThan(text.indexOf("trap '"));
+  });
+
   it("env.sh names the production project, file and env file", () => {
     const env = readFileSync("deploy/server/env.sh", "utf8");
     expect(env).toContain("export COMPOSE_PROJECT_NAME=home-finances");

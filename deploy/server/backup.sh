@@ -16,6 +16,10 @@ work="$backups/.work"
 command -v age > /dev/null || { echo "age is not installed; see docs/homelab-deployment.md" >&2; exit 1; }
 mkdir -p "$work"
 chmod 700 "$backups" "$work"
+# One backup at a time: a deploy's pre-backup and the nightly timer share backups/.work.
+exec 9> "$backups/.lock"
+flock -n 9 || { echo "Another backup is running; try again in a few minutes." >&2; exit 1; }
+# Installed only after the lock is taken, so it cannot delete another run's work.
 # However this script ends (error, kill, Ctrl-C), no plaintext dump or half-written
 # encrypted file may stay behind. The EXIT trap also runs after a signal.
 trap 'rm -f "$work"/*.dump "$work"/*.partial "$backups"/*.age.partial' EXIT

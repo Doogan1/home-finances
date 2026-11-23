@@ -12,7 +12,7 @@ fail() { printf '\nDeploy stopped: %s\n' "$*" >&2; exit 1; }
 resolved() { readlink -f "$1"; }
 
 [ -s "$HF_HOME/prod.env" ] || fail "there is no $HF_HOME/prod.env yet. Create it with:
-  node $HF_HOME/releases/<id>/scripts/setup-env.mjs --out $HF_HOME/prod.env --app-url https://<this server>.<your tailnet>.ts.net
+  node $HF_HOME/releases/${1:-<id>}/scripts/setup-env.mjs --out $HF_HOME/prod.env --app-url https://<this server>.<your tailnet>.ts.net
 (see docs/homelab-deployment.md, first-time setup), then deploy again."
 
 # Start the app of a release folder and wait for its health check.

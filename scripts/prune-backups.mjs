@@ -23,7 +23,7 @@ if (doomed.length === 0) {
   console.log("Nothing to prune.");
 } else {
   for (const name of doomed) {
-    if (apply) await rm(path.join(dir, name));
+    if (apply) await rm(path.join(dir, name), { force: true });
     console.log(`${apply ? "Deleted" : "Would delete"} ${name}`);
   }
 }

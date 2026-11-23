@@ -127,10 +127,14 @@ your tailnet. The setting survives reboots.
 The household's data is in the PC's database. Move it, then use only the server
 from then on:
 
+If you connected any bank (even Sandbox) on the PC, disconnect it in the app first:
+its saved token is encrypted with the PC's key and cannot be read on the server.
+Reconnect on the server afterwards.
+
 ```powershell
 npm run backup
 scp backups\<the file it printed> homelab:home-finances/incoming.dump
-ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/home-finances/incoming.dump --replace-live --confirm home_finances && home-finances/hf compose up -d --wait app && rm ~/home-finances/incoming.dump"
+ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/home-finances/incoming.dump --replace-live --confirm home_finances && home-finances/hf compose up -d --wait app; rm -f ~/home-finances/incoming.dump"
 ```
 
 The restore prints the name of the empty database it replaced
@@ -159,7 +163,15 @@ its health check. If the new app does not come up, the previous one is restarted
 **Rollback undoes the app, not the database.** Migrations are written to be
 additive, so the previous app normally runs fine on the newer schema. If a
 release ever needs its database change undone, restore the backup taken just
-before it (below).
+before it (below). Rollback starts the previous release's own compose file, so if a
+release ever changes the `db` service (for example the PostgreSQL version), do not
+roll back past it.
+
+If the connection drops or a deploy is interrupted, run `npm run deploy` again (it
+is safe to repeat). If the app is down meanwhile,
+`ssh homelab home-finances/hf compose up -d --wait app` starts the release
+`current` names. If a deploy reports an error after "Starting the new app"
+succeeded, the release is live and rerunning `npm run deploy` finishes the cleanup.
 
 ## Backups
 
@@ -170,6 +182,9 @@ before it (below).
   (exit code 2) if the newest is over 36 hours old. To run it daily (you), in
   PowerShell:
   `schtasks /Create /SC DAILY /ST 12:00 /TN "Home Finances backup pull" /TR "cmd /c cd /d C:\Users\Drake\home-finances && npm run backup:pull"`
+  The task's "Last Run Result" in Task Scheduler shows 0x2 when the newest backup is
+  over 36 hours old and 0x1 when the pull failed. Check it weekly, or run
+  `npm run backup:pull` by hand.
 - The backups do not include `TOKEN_ENCRYPTION_KEY`; that is in `prod.env`, which
   you keep in your password manager.
 - The backup refuses to run if `age` is not installed, so it never writes an unencrypted dump.
@@ -180,7 +195,7 @@ before it (below).
 ```powershell
 age -d -i "$env:USERPROFILE\.config\home-finances\backup-identity.txt" -o restore-test.dump backups\homelab\<newest>.dump.age
 scp restore-test.dump homelab:home-finances/restore-test.dump; Remove-Item restore-test.dump
-ssh homelab "home-finances/hf restore ~/home-finances/restore-test.dump && rm ~/home-finances/restore-test.dump"
+ssh homelab "home-finances/hf restore ~/home-finances/restore-test.dump; rm -f ~/home-finances/restore-test.dump"
 ```
 
 (`hf` runs from the release folder, so give `hf restore` a full path, as here.)
@@ -190,10 +205,10 @@ database is not touched. Drop the copy with the command it prints.
 
 ### Replace the live database from a backup
 
-Decrypt and copy as above, then:
-
 ```powershell
-ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/home-finances/restore-test.dump --replace-live --confirm home_finances && home-finances/hf compose up -d --wait app"
+age -d -i "$env:USERPROFILE\.config\home-financesackup-identity.txt" -o restore-live.dump backups\homelab\<the backup>.dump.age
+scp restore-live.dump homelab:home-finances/restore-live.dump; Remove-Item restore-live.dump
+ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/home-finances/restore-live.dump --replace-live --confirm home_finances && home-finances/hf compose up -d --wait app; rm -f ~/home-finances/restore-live.dump"
 ```
 
 The database you had stays as `home_finances_replaced_…` until you drop it.

@@ -23,6 +23,8 @@
     "verify:image": "node scripts/verify-production-image.mjs",
     "restore": "node scripts/restore.mjs",
     "backup:prune": "node scripts/prune-backups.mjs",
+    "backup:pull": "node scripts/backup-pull.mjs",
+    "deploy": "node scripts/deploy.mjs",
     "test:backup": "vitest run --config vitest.docker.config.mts",
     "preflight": "NODE_OPTIONS=--conditions=react-server tsx scripts/preflight-live.mts",
     "import:workbook": "NODE_OPTIONS=--conditions=react-server tsx scripts/import-workbook.mts",

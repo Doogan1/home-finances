@@ -52,7 +52,7 @@ function weekly(billId: string, first: string, last: string): FixtureCell[][] {
   return rows;
 }
 
-const cashFlowRow = (date: string, spend: number, pnc: number): FixtureCell[] => [
+export const cashFlowRow = (date: string, spend: number, pnc: number): FixtureCell[] => [
   day(date),
   ...Array<FixtureCell>(8).fill(null),
   f("J3+D4-H4", spend),

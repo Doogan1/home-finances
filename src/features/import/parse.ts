@@ -72,6 +72,17 @@ export function moneyOf(cell: Cell, what: string): string | null {
 
 const requiredMoney = (cell: Cell, what: string): string => moneyOf(cell, what) ?? problem(`${what} is blank`);
 
+/**
+ * A Cash Flow projection, rounded to the cent. The sheet splits pay by percentage
+ * without rounding (70% of 1926.94 is 1348.858), so its running balances carry
+ * fractions of a cent. They are only compared, never imported, so they are rounded
+ * rather than refused.
+ */
+export function projectionOf(cell: Cell, what: string): string | null {
+  if (typeof cell === "number" && Number.isFinite(cell)) return fromCents(BigInt(Math.round(cell * 100)));
+  return moneyOf(cell, what);
+}
+
 /** A calendar date from a date cell (its UTC day, which is how Excel dates are read), a date serial or "YYYY-MM-DD". */
 export function dateOf(cell: Cell, what: string): IsoDate | null {
   if (cell === null || (typeof cell === "string" && cell.trim() === "")) return null;
@@ -281,8 +292,8 @@ function readCashFlow(cell: (column: number) => Cell, row: number): CashFlowEntr
   return {
     row,
     date: requiredDate(cell(1), "Date"),
-    spend: moneyOf(cell(10), "Spend projection"),
-    pnc: moneyOf(cell(11), "PNC projection"),
+    spend: projectionOf(cell(10), "Spend projection"),
+    pnc: projectionOf(cell(11), "PNC projection"),
   };
 }
 

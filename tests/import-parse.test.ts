@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { dateOf, dayOf, moneyOf, parseWorkbook, shareOf } from "@/features/import/parse";
+import { dateOf, dayOf, moneyOf, parseWorkbook, projectionOf, shareOf } from "@/features/import/parse";
 import { readSheets } from "@/features/import/workbook";
-import { buildWorkbook, day, standardWorkbook, type WorkbookSpec } from "./helpers/workbook-fixture";
+import { buildWorkbook, cashFlowRow, day, standardWorkbook, type WorkbookSpec } from "./helpers/workbook-fixture";
 
 async function parsed(change: (spec: WorkbookSpec) => void = () => {}) {
   const spec = standardWorkbook();
@@ -19,6 +19,13 @@ describe("cell conversions", () => {
     expect(moneyOf(null, "x")).toBeNull();
     expect(() => moneyOf(12.345, "Amount")).toThrow("Amount has more than two decimal places");
     expect(() => moneyOf("lots", "Amount")).toThrow("Amount is not an amount");
+  });
+
+  it("rounds projections to the cent but still refuses text that is not an amount", () => {
+    expect(projectionOf(1348.858, "x")).toBe("1348.86");
+    expect(projectionOf(-0.004, "x")).toBe("0.00");
+    expect(projectionOf(null, "x")).toBeNull();
+    expect(() => projectionOf("lots", "Projection")).toThrow("Projection is not an amount");
   });
 
   it("reads dates from date cells, date serials and ISO text", () => {
@@ -167,6 +174,14 @@ describe("parseWorkbook", () => {
   it("reads the Cash Flow sheet's saved projections", async () => {
     const { cashFlow } = await parsed();
     expect(cashFlow[1]).toEqual({ row: 5, date: "2026-11-06", spend: "2350.00", pnc: "900.00" });
+  });
+
+  it("rounds Cash Flow projections that carry fractions of a cent, instead of refusing them", async () => {
+    const { cashFlow, problems } = await parsed((spec) => {
+      spec["Cash Flow"].rows[1] = cashFlowRow("2026-11-06", 2457.918, 900.005);
+    });
+    expect(cashFlow[1]).toEqual({ row: 5, date: "2026-11-06", spend: "2457.92", pnc: "900.01" });
+    expect(problems).toEqual([]);
   });
 
   it("turns unreadable cells into problems naming the sheet and row, and leaves the row out", async () => {

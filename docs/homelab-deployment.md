@@ -135,7 +135,7 @@ ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/hom
 
 The restore prints the name of the empty database it replaced
 (`home_finances_replaced_…`); drop it with
-`ssh homelab "home-finances/hf compose exec db sh -c 'dropdb -U \"\$POSTGRES_USER\" home_finances_replaced_…'"`.
+``ssh homelab "home-finances/hf compose exec db sh -c 'dropdb -U `$POSTGRES_USER home_finances_replaced_…'"``.
 Sign in with your usual email and password (sessions are not copied). Delete the
 local dump from `backups\` when you are satisfied.
 

@@ -343,3 +343,76 @@ button {
 .tint-negative > td {
   background: color-mix(in srgb, #d32f2f 18%, transparent);
 }
+
+.calendar {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.8125rem;
+}
+
+.calendar th {
+  padding: 0.25rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.calendar td {
+  height: 5.5rem;
+  padding: 0.25rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+.calendar ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-outside {
+  color: var(--muted);
+}
+
+.calendar-today .calendar-date {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.calendar-balance {
+  margin-top: 0.25rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-weekday {
+  display: none;
+}
+
+@media (max-width: 39.99rem) {
+  .calendar,
+  .calendar tbody,
+  .calendar tr,
+  .calendar td {
+    display: block;
+    width: 100%;
+  }
+
+  .calendar thead {
+    display: none;
+  }
+
+  .calendar td {
+    height: auto;
+    border-width: 0 0 1px;
+  }
+
+  .calendar td.calendar-outside {
+    display: none;
+  }
+
+  .calendar-weekday {
+    display: inline;
+  }
+}

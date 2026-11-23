@@ -2,7 +2,8 @@ import "server-only";
 import type { PlaidEnvironment, Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { ClearAnswerInput } from "@/features/rules/input";
 import { dateOf, lockRule, RuleInputError } from "@/features/rules/service";
-import { addDays, todayIn, type IsoDate } from "@/lib/calendar-date";
+import { MAX_MOVE_DAYS } from "@/features/rules/versions";
+import { addDays, daysBetween, todayIn, type IsoDate } from "@/lib/calendar-date";
 import { needsAttention, type ClearQuestion } from "./attention";
 import { buildForecast } from "./engine";
 import { loadForecastInput } from "./queries";
@@ -47,7 +48,14 @@ export async function answerClearQuestion(
       (q) => q.occurrence.ruleId === ruleId && q.occurrence.scheduledOn === scheduledOn && q.account.id === input.accountId,
     );
     if (!question) throw new RuleInputError("question_not_found");
-    const fields = input.answer === "cleared" ? { status: "PAID" as const } : { movedTo: dateOf(addDays(question.snapshotDate, 1)) };
+    let fields: { status: "PAID" } | { movedTo: Date | null };
+    if (input.answer === "cleared") fields = { status: "PAID" };
+    else {
+      // The same rules as any other move: none when it lands on the scheduled date, and never too far from it.
+      const movedTo = addDays(question.snapshotDate, 1);
+      if (Math.abs(daysBetween(scheduledOn, movedTo)) > MAX_MOVE_DAYS) throw new RuleInputError("move_out_of_range");
+      fields = { movedTo: movedTo === scheduledOn ? null : dateOf(movedTo) };
+    }
     await tx.occurrenceOverride.upsert({
       where: { ruleId_scheduledOn: { ruleId, scheduledOn: scheduled } },
       create: { householdId, ruleId, scheduledOn: scheduled, ...fields, updatedByUserId: userId },

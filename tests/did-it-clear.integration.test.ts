@@ -105,4 +105,46 @@ describe("Did it clear?", () => {
     expect(await openClearQuestions(app, outsider.householdId, OPTIONS)).toEqual([]);
     expect(await owner.occurrenceOverride.count()).toBe(0);
   });
+  it("refuses Still pending when the day after the balance is more than 62 days from the scheduled date, leaving the row as it was", async () => {
+    const far = (
+      await createRule(
+        app,
+        householdId,
+        createRuleInput.parse({
+          kind: "BILL",
+          name: "Water",
+          amount: "50",
+          schedule: { recurrence: "ONCE", anchorDate: "2026-09-01" },
+          allocations: [{ accountId: spend, mode: "REMAINDER" }],
+        }),
+      )
+    ).id;
+    // Already moved to Oct 10, so it is still a question; Nov 15 is 75 days after Sep 1.
+    await owner.occurrenceOverride.create({ data: { householdId, ruleId: far, scheduledOn: d("2026-09-01"), movedTo: d("2026-10-10") } });
+    const before = await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId: far } });
+    await expect(
+      answerClearQuestion(app, householdId, userId, far, "2026-09-01", clearAnswerInput.parse({ accountId: spend, answer: "pending" }), OPTIONS),
+    ).rejects.toMatchObject({ code: "move_out_of_range" });
+    expect(await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId: far } })).toEqual(before);
+  });
+
+  it("stores no move when the day after the balance is the scheduled date itself", async () => {
+    const early = (
+      await createRule(
+        app,
+        householdId,
+        createRuleInput.parse({
+          kind: "BILL",
+          name: "Gas",
+          amount: "30",
+          schedule: { recurrence: "ONCE", anchorDate: "2026-11-15" },
+          allocations: [{ accountId: spend, mode: "REMAINDER" }],
+        }),
+      )
+    ).id;
+    // Moved earlier to Nov 12, so it is a question; Nov 15 is where it was scheduled.
+    await owner.occurrenceOverride.create({ data: { householdId, ruleId: early, scheduledOn: d("2026-11-15"), movedTo: d("2026-11-12") } });
+    await answerClearQuestion(app, householdId, userId, early, "2026-11-15", clearAnswerInput.parse({ accountId: spend, answer: "pending" }), OPTIONS);
+    expect(await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId: early } })).toMatchObject({ movedTo: null });
+  });
 });

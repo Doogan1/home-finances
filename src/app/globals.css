@@ -333,3 +333,13 @@ button {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.tint-low,
+.tint-low > td {
+  background: color-mix(in srgb, #b26a00 14%, transparent);
+}
+
+.tint-negative,
+.tint-negative > td {
+  background: color-mix(in srgb, #d32f2f 18%, transparent);
+}

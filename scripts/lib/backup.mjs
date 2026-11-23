@@ -246,7 +246,20 @@ export async function createBackup({ outDir = DEFAULT_BACKUP_DIR, database, proj
 // Restore
 // ---------------------------------------------------------------------------
 
-/** Is the app service running? A live restore must not happen underneath it. */
+/**
+ * The `docker compose` arguments that re-apply the app role's grants after a
+ * restore. Locally that is the dev app container's `npm run db:migrate`; on the
+ * server (HF_MIGRATE_SERVICE=migrate, set by deploy/server/env.sh) it is the
+ * one-off migrate service, because the production app image has no npm scripts.
+ */
+export function reapplyGrantsArgs(env = process.env) {
+  const service = env.HF_MIGRATE_SERVICE;
+  if (!service) return ["run", "--rm", "--no-deps", "app", "npm", "run", "db:migrate"];
+  if (!/^[a-z][a-z0-9_-]*$/.test(service)) throw new BackupError("HF_MIGRATE_SERVICE must be a plain service name.");
+  return ["run", "--rm", service];
+}
+
+/** Is the app service running?A live restore must not happen underneath it. */
 export async function appIsRunning(options = {}) {
   const result = await mustSucceed(
     await compose(["ps", "--status", "running", "--services"], options),
@@ -305,7 +318,7 @@ export async function restoreBackup({
   liveDatabase,
   appRunning = () => appIsRunning({ project }),
   now = new Date(),
-  reapplyGrants = () => compose(["run", "--rm", "--no-deps", "app", "npm", "run", "db:migrate"], { project }),
+  reapplyGrants = () => compose(reapplyGrantsArgs(), { project }),
 } = {}) {
   if (!file) throw new BackupError("Say which dump file to restore.");
   const info = await stat(file).catch(() => null);

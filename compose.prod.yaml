@@ -1,0 +1,86 @@
+# Production stack for the homelab server. Not for local development (that is
+# compose.yaml). Run only through deploy/server/release.sh or ~/home-finances/hf,
+# which set the project name, this file, the env file and RELEASE (see
+# deploy/server/env.sh and docs/homelab-deployment.md).
+#
+# Every value comes from ~/home-finances/prod.env by interpolation, and each
+# service receives only the variables it needs. In particular the app never sees
+# the owner credentials: migrations run in the separate one-off `migrate` job.
+# Nothing mounts a host folder, so SELinux labels never come into it.
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?missing from prod.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing from prod.env}
+      POSTGRES_DB: ${POSTGRES_DB:?missing from prod.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    # No `ports:`: only the other services on this network can reach it.
+
+  migrate:
+    profiles: [ops]
+    build:
+      context: .
+      target: tools
+    image: home-finances-tools:${RELEASE:?set by deploy/server/env.sh}
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?missing from prod.env}
+      APP_DB_USER: ${APP_DB_USER:?missing from prod.env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?missing from prod.env}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  app:
+    build:
+      context: .
+      target: production
+    image: home-finances:${RELEASE:?set by deploy/server/env.sh}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?missing from prod.env}
+      APP_URL: ${APP_URL:?missing from prod.env}
+      AUTH_SECRET: ${AUTH_SECRET:?missing from prod.env}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?missing from prod.env}
+      TOKEN_ENCRYPTION_KEY_ID: ${TOKEN_ENCRYPTION_KEY_ID:?missing from prod.env}
+      TOKEN_ENCRYPTION_RETIRED_KEYS: ${TOKEN_ENCRYPTION_RETIRED_KEYS:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      PLAID_LIVE_OPT_IN: ${PLAID_LIVE_OPT_IN:-}
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+    ports:
+      # Loopback only. `tailscale serve` is the way in, with HTTPS.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 1g
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *logging
+
+volumes:
+  db-data:

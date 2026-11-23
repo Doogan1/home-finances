@@ -2,8 +2,10 @@
 
 # Targets:
 #   dev         hot-reloading development server (used by compose.yaml)
-#   production  minimal standalone Next.js server, non-root. Built and tested
-#               locally only; nothing here deploys it.
+#   tools       source + all dependencies, for one-off jobs such as migrations
+#               (used by compose.prod.yaml's `migrate` service)
+#   production  minimal standalone Next.js server, non-root (compose.prod.yaml's
+#               `app`; deployed by scripts/deploy.mjs, see docs/homelab-deployment.md)
 
 ARG NODE_VERSION=24
 
@@ -35,6 +37,14 @@ FROM deps AS dev
 RUN mkdir -p /app/.next
 EXPOSE 3000
 CMD ["npx", "next", "dev", "--hostname", "0.0.0.0", "--port", "3000"]
+
+# --- one-off jobs ----------------------------------------------------------
+# Migrations need the Prisma CLI and tsx, which the standalone production image
+# leaves out. This image is never the running app and is never published.
+FROM deps AS tools
+COPY --chown=node:node . .
+RUN npx prisma generate
+CMD ["npx", "tsx", "scripts/migrate.mts"]
 
 # --- production build ----------------------------------------------------
 FROM deps AS build

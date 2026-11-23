@@ -206,7 +206,7 @@ database is not touched. Drop the copy with the command it prints.
 ### Replace the live database from a backup
 
 ```powershell
-age -d -i "$env:USERPROFILE\.config\home-financesackup-identity.txt" -o restore-live.dump backups\homelab\<the backup>.dump.age
+age -d -i "$env:USERPROFILE\.config\home-finances\backup-identity.txt" -o restore-live.dump backups\homelab\<the backup>.dump.age
 scp restore-live.dump homelab:home-finances/restore-live.dump; Remove-Item restore-live.dump
 ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/home-finances/restore-live.dump --replace-live --confirm home_finances && home-finances/hf compose up -d --wait app; rm -f ~/home-finances/restore-live.dump"
 ```

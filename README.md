@@ -63,6 +63,7 @@ by the Docker build. Steps: [docs/local-development.md](docs/local-development.m
 | [docs/transaction-sync.md](docs/transaction-sync.md) | how a sync stays all-or-nothing, and how to inspect it |
 | [docs/local-https.md](docs/local-https.md) | serving the app over https on your own computer (required for real OAuth banks) |
 | [docs/future-deployment.md](docs/future-deployment.md) | what must be true **before** this is ever hosted (nothing has been deployed or approved) |
+| [docs/homelab-deployment.md](docs/homelab-deployment.md) | **running it on the homelab server**: first-time setup, `npm run deploy`, rollback, encrypted backups and restore |
 
 ## Prerequisites
 
@@ -134,7 +135,7 @@ npm run test:e2e                  # needs `docker compose up` running
 They create a labelled throwaway user in the development database and delete it
 afterwards; see [docs/auth.md](docs/auth.md).
 
-Build the production image (prepared locally only, never deployed):
+Build the production image locally (the server builds its own; see docs/homelab-deployment.md):
 
 ```bash
 docker build --target production -t home-finances:local .
@@ -261,7 +262,7 @@ Full design, guarantees and recovery steps are in [docs/transaction-sync.md](doc
 - **Real banks are a deliberate opt-in.** `PLAID_ENV=production` is refused unless `PLAID_LIVE_OPT_IN=yes` is also set; use a separate database and key for real data ([going live](docs/local-development.md#going-live-real-banks-a-deliberate-opt-in)).
 - **Security verification** is automated: source-tree rules (no client component imports a server-only module, every mutating route is guarded before it does any work, secrets are read from the environment in one file, nothing logs a whole error), cross-household and CSRF tests that discover every route themselves, cacheability and header checks, and a log-leak test. `npm run verify:image` also scans the production image for your secret values and runs the browser suite against it. Every one of these checks was shown to fail when the property it guards was deliberately broken.
 - **Browser hardening headers** (`X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`) are set; a Content-Security-Policy is deliberately not, until one is tested against Plaid Link.
-- **Hosting** is documented as prerequisites only ([docs/future-deployment.md](docs/future-deployment.md)). Nothing was deployed, and the VM's guest-level state was never inspected.
+- **Hosting**: the app runs on the household's homelab server, reachable only over Tailscale ([docs/homelab-deployment.md](docs/homelab-deployment.md)). The cloud-VM checklist in [docs/future-deployment.md](docs/future-deployment.md) still applies to any internet-facing hosting.
 
 ## Layout
 
@@ -308,7 +309,7 @@ tests/                              Vitest unit tests; *.integration.test.ts use
 All seven tasks of the plan are done. Be clear about what that does and does not mean:
 
 - It runs **locally, on Plaid Sandbox**. Real banks are possible only through the deliberate opt-in above, and nothing has been tried against a real institution.
-- It is **not ready to host.** Nothing was deployed and the cloud VM's guest was never inspected (see [docs/future-deployment.md](docs/future-deployment.md) for what must be true first). Do not point an internet-reachable copy at real accounts until that is done.
+- It is hosted **privately** (Tailscale only). It is not ready for the open internet: there is no Content-Security-Policy yet, and the cloud-VM checklist in [docs/future-deployment.md](docs/future-deployment.md) has not been worked through.
 - There are no webhooks and no scheduled syncs; transactions sync only when you ask.
 - A real OAuth redirect round trip through a bank was not exercised (Sandbox in a desktop browser uses a pop-up instead).
 - Backups are local and unencrypted; they protect against mistakes, not against losing the computer.

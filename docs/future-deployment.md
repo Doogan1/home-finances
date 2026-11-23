@@ -1,4 +1,7 @@
 # If this is ever hosted: prerequisites (not started, not approved)
+> **Update (2026-11-23):** the app now runs privately on a homelab server over
+> Tailscale; see [homelab-deployment.md](homelab-deployment.md). This checklist is
+> still what applies before any **internet-facing** hosting.
 
 **Nothing here has been done, and nothing in this repository deploys anything.**
 No cloud, SSH, firewall, DNS, Nginx, IAM, billing or Plaid-production setting has

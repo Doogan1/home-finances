@@ -94,7 +94,7 @@ async function Rule({ params }: { params: Params }) {
 
       {!rule.archivedAt && <Actions rule={rule} today={today} choices={choices} accounts={accounts} />}
       {today && !rule.archivedAt && <NextOccurrences ruleId={rule.id} versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
-      <EditsOffSchedule ruleId={rule.id} versions={rule.versions} overrides={overrides} />
+      <EditsOffSchedule ruleId={rule.id} archived={rule.archivedAt !== null} versions={rule.versions} overrides={overrides} />
     </>
   );
 }
@@ -206,7 +206,7 @@ function NextOccurrences({
 }
 
 /** Per-date edits whose date the rule no longer produces: kept and shown, never deleted silently. */
-function EditsOffSchedule({ ruleId, versions, overrides }: { ruleId: string; versions: StoredVersion[]; overrides: OverrideView[] }) {
+function EditsOffSchedule({ ruleId, archived, versions, overrides }: { ruleId: string; archived: boolean; versions: StoredVersion[]; overrides: OverrideView[] }) {
   const orphans = overrides.filter((edit) => ruleOccurrences(versions, edit.scheduledOn, edit.scheduledOn).length === 0);
   if (orphans.length === 0) return null;
   return (
@@ -218,7 +218,7 @@ function EditsOffSchedule({ ruleId, versions, overrides }: { ruleId: string; ver
           <li key={edit.scheduledOn}>
             {formatIsoDate(edit.scheduledOn)}: {STATUS_LABELS[edit.status]}
             {edit.note ? ` (${edit.note})` : ""}{" "}
-            <Link href={occurrenceHref(ruleId, edit.scheduledOn, `/bills/${ruleId}`)}>Review it</Link>
+            {!archived && <Link href={occurrenceHref(ruleId, edit.scheduledOn, `/bills/${ruleId}`)}>Review it</Link>}
           </li>
         ))}
       </ul>

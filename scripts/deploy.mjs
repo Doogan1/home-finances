@@ -67,15 +67,23 @@ async function upload(id) {
       [HOST, `rm -rf ${target}.partial && mkdir -p ${target}.partial && tar -x -C ${target}.partial`],
       { stdio: ["pipe", "inherit", "inherit"], windowsHide: true },
     );
+    // One side failing stops the other, so neither is left blocked on a pipe nobody reads or writes.
+    const fail = () => {
+      git.kill();
+      ssh.kill();
+      finish(false);
+    };
     ssh.stdin.on("error", () => {}); // ssh may exit before reading everything (EPIPE); its exit code reports that
-    git.on("error", () => finish(false));
-    ssh.on("error", () => finish(false));
+    git.on("error", fail);
+    ssh.on("error", fail);
     git.on("close", (code) => {
-      gitCode = code ?? 1;
+      if (code !== 0) return fail();
+      gitCode = 0;
       check();
     });
     ssh.on("close", (code) => {
-      sshCode = code ?? 1;
+      if (code !== 0) return fail();
+      sshCode = 0;
       check();
     });
     git.stdout.pipe(ssh.stdin);

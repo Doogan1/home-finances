@@ -1,4 +1,4 @@
-import type { RuleErrorCode } from "./versions";
+import { MAX_MOVE_DAYS, type RuleErrorCode } from "./versions";
 
 /** What the person is told for each refusal. Routes and form previews share these. */
 export const RULE_MESSAGES: Record<RuleErrorCode, string> = {
@@ -21,4 +21,8 @@ export const RULE_MESSAGES: Record<RuleErrorCode, string> = {
   stop_before_version_start: "That's before the latest change starts. Pick a later date, or edit that change.",
   end_before_start: "The end date can't be before the version starts.",
   only_latest_version_can_end: "Only the latest version's end date can be changed.",
+  occurrence_not_found: "This bill or income has no date then. It may have changed since this page was opened.",
+  confirmed_needs_amount: "Enter the confirmed amount, or choose another status.",
+  move_out_of_range: `An occurrence can be moved up to ${MAX_MOVE_DAYS} days either way.`,
+  question_not_found: "That question has already been answered or no longer applies. Reload to see what's left.",
 };

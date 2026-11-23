@@ -150,3 +150,20 @@ export const editVersionInput = z
 export type EditVersionInput = z.infer<typeof editVersionInput>;
 
 export const archiveRuleInput = z.strictObject({});
+
+export const OCCURRENCE_STATUSES = ["PLANNED", "CONFIRMED", "PAID", "SKIPPED"] as const;
+
+export const occurrenceEditInput = z
+  .strictObject({
+    status: z.enum(OCCURRENCE_STATUSES),
+    confirmedAmount: positiveMoney.nullable(),
+    movedTo: isoDateField.nullable(),
+    note: optionalText(200).nullable(),
+  })
+  .transform((input) => ({ ...input, note: input.note ?? null }));
+export type OccurrenceEditInput = z.infer<typeof occurrenceEditInput>;
+
+export const resetOccurrenceInput = z.strictObject({});
+
+export const clearAnswerInput = z.strictObject({ accountId: z.uuid(), answer: z.enum(["cleared", "pending"]) });
+export type ClearAnswerInput = z.infer<typeof clearAnswerInput>;

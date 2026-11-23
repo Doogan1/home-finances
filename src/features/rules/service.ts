@@ -36,7 +36,7 @@ function throwIf(problem: RuleErrorCode | null): void {
   if (problem) throw new RuleInputError(problem);
 }
 
-function dateOf(value: IsoDate): Date {
+export function dateOf(value: IsoDate): Date {
   const date = parseIsoDate(value);
   if (!date) throw new RangeError(`Not a date: ${value}`);
   return date;
@@ -82,7 +82,7 @@ const allocationRows = (allocations: AllocationLike[]) =>
   allocations.map((a, position) => ({ accountId: a.accountId, mode: a.mode, value: a.value, position }));
 
 /** Locks the rule's row for the rest of the transaction, then reads it. */
-async function lockRule(tx: Tx, householdId: string, ruleId: string) {
+export async function lockRule(tx: Tx, householdId: string, ruleId: string) {
   await tx.$queryRaw`select id from "Rule" where id = ${ruleId}::uuid and "householdId" = ${householdId}::uuid for update`;
   const rule = await tx.rule.findFirst({ where: { id: ruleId, householdId }, include: { versions: versionInclude } });
   if (!rule) throw new RuleInputError("rule_not_found");

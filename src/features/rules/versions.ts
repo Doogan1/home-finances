@@ -29,7 +29,14 @@ export type RuleErrorCode =
   | "no_later_occurrence"
   | "stop_before_version_start"
   | "end_before_start"
-  | "only_latest_version_can_end";
+  | "only_latest_version_can_end"
+  | "occurrence_not_found"
+  | "confirmed_needs_amount"
+  | "move_out_of_range"
+  | "question_not_found";
+
+/** How far one occurrence can be moved from the date the rule gave it, either way. */
+export const MAX_MOVE_DAYS = 62;
 
 export type RuleKind = "INCOME" | "BILL";
 export type VersionDraft = Pattern & { amount: string; note: string | null; allocations: AllocationLike[] };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { occurrencesBetween, orphanEdits } from "@/features/forecast/occurrences";
-import { edit, rule, version } from "./helpers/forecast-fixtures";
+import { occurrenceAt, occurrencesBetween, orphanEdits } from "@/features/forecast/occurrences";
+import { edit, MORTGAGE, rule, version } from "./helpers/forecast-fixtures";
 
 const paycheck = rule({
   id: "pay",
@@ -137,5 +137,30 @@ describe("orphanEdits", () => {
       ],
     );
     expect(result).toEqual([{ ruleId: "r1", ruleName: "Mortgage", scheduledOn: "2026-11-15" }]);
+  });
+});
+
+describe("occurrenceAt", () => {
+  it("is the occurrence the rule produces on that date, with its edit applied", () => {
+    const confirmed = edit({ ruleId: "mort", scheduledOn: "2026-12-01", status: "CONFIRMED", confirmedAmount: "1900" });
+    expect(occurrenceAt(MORTGAGE, [confirmed], "2026-12-01")).toMatchObject({
+      ruleId: "mort",
+      scheduledOn: "2026-12-01",
+      date: "2026-12-01",
+      status: "CONFIRMED",
+      estimate: false,
+      amount: 190000n,
+    });
+  });
+
+  it("keeps the scheduled date as its identity when the edit moves it", () => {
+    const moved = edit({ ruleId: "mort", scheduledOn: "2026-12-01", movedTo: "2026-12-03" });
+    expect(occurrenceAt(MORTGAGE, [moved], "2026-12-01")).toMatchObject({ scheduledOn: "2026-12-01", date: "2026-12-03" });
+  });
+
+  it("is null on a date the rule does not produce, and ignores other rules' edits", () => {
+    expect(occurrenceAt(MORTGAGE, [], "2026-12-02")).toBeNull();
+    const otherRule = edit({ ruleId: "r1", scheduledOn: "2026-12-01", status: "SKIPPED" });
+    expect(occurrenceAt(MORTGAGE, [otherRule], "2026-12-01")).toMatchObject({ status: "PLANNED", estimate: true, amount: 184091n });
   });
 });

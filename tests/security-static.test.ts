@@ -88,6 +88,7 @@ describe("secrets stay on the server", () => {
       "src/features/forecast/engine.ts", // pure: the forecast itself
       "src/features/forecast/attention.ts", // pure: Needs attention and the next 7 days
       "src/features/forecast/chart.ts", // pure: chart geometry
+      "src/features/forecast/effect.ts", // pure: an edit's effect on the lowest point, run by the panel in the browser
       "src/features/import/workbook.ts", // reads a workbook's bytes into plain values; no database, no files
       "src/features/import/parse.ts", // pure: sheets to typed rows
       "src/features/import/choices.ts", // zod schema for choices.json only

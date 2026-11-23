@@ -44,6 +44,31 @@ function producedOn(rule: ForecastRule, date: IsoDate) {
   return ruleOccurrences(rule.versions, date, date)[0] ?? null;
 }
 
+/** One scheduled date of a version, with the person's edit (if any) applied. */
+function computed(rule: ForecastRule, version: StoredVersion, scheduledOn: IsoDate, e: ForecastOverride | undefined): ComputedOccurrence {
+  const confirmed = e?.confirmedAmount ?? null;
+  const amount = toCents(confirmed ?? version.amount);
+  return {
+    ruleId: rule.id,
+    ruleName: rule.name,
+    kind: rule.kind,
+    versionId: version.id,
+    scheduledOn,
+    date: e?.movedTo ?? scheduledOn,
+    status: e?.status ?? "PLANNED",
+    estimate: confirmed === null,
+    amount,
+    shares: splitAmount(amount, version.allocations),
+  };
+}
+
+/** The occurrence a rule produces on `scheduledOn`, with its edit applied; null when the rule does not produce that date. */
+export function occurrenceAt(rule: ForecastRule, overrides: readonly ForecastOverride[], scheduledOn: IsoDate): ComputedOccurrence | null {
+  const produced = producedOn(rule, scheduledOn);
+  if (!produced) return null;
+  return computed(rule, produced.version, scheduledOn, overrides.find((o) => o.ruleId === rule.id && o.scheduledOn === scheduledOn));
+}
+
 /** Every occurrence whose effective date is in [from, to], Skipped ones included. */
 export function occurrencesBetween(
   rules: readonly ForecastRule[],
@@ -63,23 +88,9 @@ export function occurrencesBetween(
       if (produced) scheduled.set(produced.date, produced.version);
     }
     for (const [scheduledOn, version] of scheduled) {
-      const e = edits.get(key(rule.id, scheduledOn));
-      const date = e?.movedTo ?? scheduledOn;
-      if (date < from || date > to) continue;
-      const confirmed = e?.confirmedAmount ?? null;
-      const amount = toCents(confirmed ?? version.amount);
-      result.push({
-        ruleId: rule.id,
-        ruleName: rule.name,
-        kind: rule.kind,
-        versionId: version.id,
-        scheduledOn,
-        date,
-        status: e?.status ?? "PLANNED",
-        estimate: confirmed === null,
-        amount,
-        shares: splitAmount(amount, version.allocations),
-      });
+      const occurrence = computed(rule, version, scheduledOn, edits.get(key(rule.id, scheduledOn)));
+      if (occurrence.date < from || occurrence.date > to) continue;
+      result.push(occurrence);
     }
   }
   return result.sort(

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { UPCOMING_DAYS, type UpcomingItem } from "@/features/forecast/attention";
 import { formatIsoDate } from "@/features/rules/summary";
 import { signedMoney } from "./money";
+import { occurrenceHref } from "./occurrence-link";
 import { StatusChip } from "./status";
 
 export function NextDays({ items }: { items: UpcomingItem[] }) {
@@ -21,7 +22,7 @@ export function NextDays({ items }: { items: UpcomingItem[] }) {
           <tr key={`${o.ruleId}-${o.scheduledOn}`}>
             <td>{formatIsoDate(o.date)}</td>
             <td>
-              <Link href={`/bills/${o.ruleId}`}>{o.ruleName}</Link>
+              <Link href={occurrenceHref(o.ruleId, o.scheduledOn, "/")}>{o.ruleName}</Link>
               <StatusChip status={o.status} />
             </td>
             <td>{shares.map((s) => `${s.account.name} ${signedMoney(s.cents)}`).join(" · ")}</td>

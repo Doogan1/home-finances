@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ESTIMATE_DAYS, attentionCount, type Attention, type LowBalance } from "@/features/forecast/attention";
 import { formatIsoDate } from "@/features/rules/summary";
-import { money, signedMoney } from "./money";
+import { ClearQuestionItem, clearKey } from "./did-it-clear";
+import { money } from "./money";
+import { occurrenceHref } from "./occurrence-link";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -36,7 +38,7 @@ export function NeedsAttention({ attention }: { attention: Attention }) {
           <ul>
             {attention.estimates.map((o) => (
               <li key={`${o.ruleId}-${o.scheduledOn}`}>
-                {formatIsoDate(o.date)} <Link href={`/bills/${o.ruleId}`}>{o.ruleName}</Link>{" "}
+                {formatIsoDate(o.date)} <Link href={occurrenceHref(o.ruleId, o.scheduledOn, "/")}>{o.ruleName}</Link>{" "}
                 <span className="estimate">{money(o.amount)}</span>
               </li>
             ))}
@@ -44,15 +46,12 @@ export function NeedsAttention({ attention }: { attention: Attention }) {
         </li>
       )}
       {attention.didItClear.map((q) => (
-        <li key={`clear-${q.occurrence.ruleId}-${q.occurrence.scheduledOn}-${q.account.id}`}>
-          Did it clear? <Link href={`/bills/${q.occurrence.ruleId}`}>{q.occurrence.ruleName}</Link>, {signedMoney(q.cents)} in{" "}
-          {q.account.name} on {formatIsoDate(q.occurrence.date)}, on or before its balance of {formatIsoDate(q.snapshotDate)}.
-        </li>
+        <ClearQuestionItem key={clearKey(q)} question={q} back="/" />
       ))}
       {attention.orphanEdits.map((e) => (
         <li key={`orphan-${e.ruleId}-${e.scheduledOn}`}>
           <Link href={`/bills/${e.ruleId}`}>{e.ruleName}</Link> has an edit for {formatIsoDate(e.scheduledOn)}, a date it no longer
-          produces.
+          produces. <Link href={occurrenceHref(e.ruleId, e.scheduledOn, "/")}>Review it</Link>
         </li>
       ))}
     </ul>

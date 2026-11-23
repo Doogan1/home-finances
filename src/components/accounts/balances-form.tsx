@@ -38,14 +38,15 @@ export function BalancesForm({ rows, today }: { rows: BalanceRow[]; today: strin
     if (entries.length === 0) return setError("Enter at least one balance.");
 
     setSaving(true);
-    const result = await postJson("/api/balances", {
+    const result = await postJson<{ questions: number }>("/api/balances", {
       asOfDate: String(data.get("asOfDate") ?? ""),
       note: String(data.get("note") ?? ""),
       entries,
     });
     setSaving(false);
     if (!result.ok) return setError(result.message);
-    router.push("/accounts");
+    // New balances can settle earlier items: ask about those first, when there are any.
+    router.push(result.data.questions > 0 ? "/accounts/did-it-clear" : "/accounts");
     router.refresh();
   }
 

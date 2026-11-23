@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { z } from "zod";
 import { TimeZoneForm } from "@/components/accounts/time-zone-form";
+import { occurrenceHref } from "@/components/forecast/occurrence-link";
+import { STATUS_LABELS } from "@/components/forecast/status";
 import { ArchiveRuleButton } from "@/components/rules/archive-rule-button";
 import { ChangeFromForm } from "@/components/rules/change-from-form";
 import { EditVersionForm } from "@/components/rules/edit-version-form";
@@ -22,13 +24,6 @@ import { fromCents, toCents } from "@/lib/cents";
 import { getDb } from "@/lib/db";
 
 export const metadata: Metadata = { title: "Bill or income · Home Finances" };
-
-const STATUS_LABELS: Record<OverrideView["status"], string> = {
-  PLANNED: "Planned",
-  CONFIRMED: "Confirmed",
-  PAID: "Paid",
-  SKIPPED: "Skipped",
-};
 
 type Params = Promise<{ id: string }>;
 type NameOf = (accountId: string) => string;
@@ -98,8 +93,8 @@ async function Rule({ params }: { params: Params }) {
       </ol>
 
       {!rule.archivedAt && <Actions rule={rule} today={today} choices={choices} accounts={accounts} />}
-      {today && !rule.archivedAt && <NextOccurrences versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
-      <EditsOffSchedule versions={rule.versions} overrides={overrides} />
+      {today && !rule.archivedAt && <NextOccurrences ruleId={rule.id} versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
+      <EditsOffSchedule ruleId={rule.id} versions={rule.versions} overrides={overrides} />
     </>
   );
 }
@@ -149,11 +144,13 @@ function Actions({
 }
 
 function NextOccurrences({
+  ruleId,
   versions,
   today,
   overrides,
   nameOf,
 }: {
+  ruleId: string;
   versions: StoredVersion[];
   today: IsoDate;
   overrides: OverrideView[];
@@ -192,7 +189,7 @@ function NextOccurrences({
             return (
               <tr key={date}>
                 <td>
-                  {formatIsoDate(date)}
+                  <Link href={occurrenceHref(ruleId, date, `/bills/${ruleId}`)}>{formatIsoDate(date)}</Link>
                   {edit?.movedTo && <span className="muted"> (moved to {formatIsoDate(edit.movedTo)})</span>}
                 </td>
                 <td className="num">{formatMoney(amount, "USD")}</td>
@@ -209,7 +206,7 @@ function NextOccurrences({
 }
 
 /** Per-date edits whose date the rule no longer produces: kept and shown, never deleted silently. */
-function EditsOffSchedule({ versions, overrides }: { versions: StoredVersion[]; overrides: OverrideView[] }) {
+function EditsOffSchedule({ ruleId, versions, overrides }: { ruleId: string; versions: StoredVersion[]; overrides: OverrideView[] }) {
   const orphans = overrides.filter((edit) => ruleOccurrences(versions, edit.scheduledOn, edit.scheduledOn).length === 0);
   if (orphans.length === 0) return null;
   return (
@@ -220,7 +217,8 @@ function EditsOffSchedule({ versions, overrides }: { versions: StoredVersion[]; 
         {orphans.map((edit) => (
           <li key={edit.scheduledOn}>
             {formatIsoDate(edit.scheduledOn)}: {STATUS_LABELS[edit.status]}
-            {edit.note ? ` (${edit.note})` : ""}
+            {edit.note ? ` (${edit.note})` : ""}{" "}
+            <Link href={occurrenceHref(ruleId, edit.scheduledOn, `/bills/${ruleId}`)}>Review it</Link>
           </li>
         ))}
       </ul>

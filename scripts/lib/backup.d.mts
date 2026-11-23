@@ -21,6 +21,12 @@ export function liveDatabaseInfo(options?: ComposeOptions): Promise<{ user: stri
 export function sql(statement: string, database: string, options?: ComposeOptions): Promise<string[][]>;
 export function databaseExists(name: string, options?: ComposeOptions): Promise<boolean>;
 export function assertSafeBackupDir(dir: string, isIgnored?: (file: string) => Promise<boolean>): Promise<string>;
+export function restoreTargetName(options: {
+  target?: string;
+  replaceLive?: boolean;
+  liveDatabase: string;
+  stamp: string;
+}): string;
 export function reapplyGrantsArgs(env?: Record<string, string | undefined>): string[];
 
 export function createBackup(options?: {

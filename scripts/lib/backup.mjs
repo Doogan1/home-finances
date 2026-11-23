@@ -302,6 +302,21 @@ async function loadDump({ file, database, project }) {
 }
 
 /**
+ * The database a restore writes to. With no target, a new side database; with
+ * `replaceLive` and no target, the live one (so `--replace-live --confirm <live>`
+ * means what it says). `replaceLive` with some other target is a contradiction
+ * and is refused rather than silently ignored.
+ */
+export function restoreTargetName({ target, replaceLive = false, liveDatabase, stamp }) {
+  if (replaceLive && target !== undefined && target !== liveDatabase) {
+    throw new BackupError(
+      `--replace-live replaces the live database "${liveDatabase}"; leave out --target, or drop --replace-live to restore into "${target}".`,
+    );
+  }
+  return assertDatabaseName(target ?? (replaceLive ? liveDatabase : `${liveDatabase}_restore_${stamp}`));
+}
+
+/**
  * Restores a dump. By default into a NEW, separate database (never the live
  * one). Replacing the live database needs `replaceLive`, a `confirm` that
  * repeats its exact name, and the app stopped. Even then nothing is overwritten
@@ -326,7 +341,7 @@ export async function restoreBackup({
 
   const live = liveDatabase ? { database: liveDatabase } : await liveDatabaseInfo({ project });
   const stamp = timestamp(now).toLowerCase();
-  const targetName = assertDatabaseName(target ?? `${live.database}_restore_${stamp}`);
+  const targetName = restoreTargetName({ target, replaceLive, liveDatabase: live.database, stamp });
   const opts = { project };
 
   if (targetName !== live.database) {

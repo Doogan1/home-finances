@@ -1,0 +1,41 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const SCRIPTS = ["env.sh", "hf.sh", "backup.sh", "release.sh"].map((f) => `deploy/server/${f}`);
+
+describe("server shell scripts", () => {
+  it.each(SCRIPTS)("%s is valid POSIX sh with LF line endings", (file) => {
+    const text = readFileSync(file, "utf8");
+    expect(text).not.toContain("\r");
+    execFileSync("sh", ["-n", file]); // throws on a syntax error
+  });
+
+  it.each(SCRIPTS.filter((f) => !f.endsWith("env.sh")))("%s stops on the first error", (file) => {
+    const text = readFileSync(file, "utf8");
+    expect(text.startsWith("#!/bin/sh\n")).toBe(true);
+    expect(text).toMatch(/^set -eu$/m);
+  });
+
+  it("keeps line endings LF on checkout and in git archive", () => {
+    const attributes = readFileSync(".gitattributes", "utf8");
+    expect(attributes).toMatch(/^\*\.sh text eol=lf$/m);
+    expect(attributes).toMatch(/^deploy\/server\/systemd\/\* text eol=lf$/m);
+  });
+
+  it("the timer runs the backup nightly and catches up after downtime", () => {
+    const timer = readFileSync("deploy/server/systemd/home-finances-backup.timer", "utf8");
+    expect(timer).toMatch(/^OnCalendar=\*-\*-\* 03:30:00$/m);
+    expect(timer).toMatch(/^Persistent=true$/m);
+    const service = readFileSync("deploy/server/systemd/home-finances-backup.service", "utf8");
+    expect(service).toMatch(/^ExecStart=%h\/home-finances\/hf backup$/m);
+  });
+
+  it("env.sh names the production project, file and env file", () => {
+    const env = readFileSync("deploy/server/env.sh", "utf8");
+    expect(env).toContain("export COMPOSE_PROJECT_NAME=home-finances");
+    expect(env).toContain("export COMPOSE_FILE=compose.prod.yaml");
+    expect(env).toContain('export COMPOSE_ENV_FILES="$HF_HOME/prod.env"');
+    expect(env).toContain("export HF_MIGRATE_SERVICE=migrate");
+  });
+});

@@ -1,0 +1,6 @@
+[Unit]
+Description=Home Finances: encrypted database backup
+
+[Service]
+Type=oneshot
+ExecStart=%h/home-finances/hf backup

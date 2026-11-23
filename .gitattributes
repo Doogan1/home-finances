@@ -1,0 +1,4 @@
+# Scripts and units that run on the Linux server must keep LF line endings, also
+# when packed with `git archive` on Windows (core.autocrlf would add CRs).
+*.sh text eol=lf
+deploy/server/systemd/* text eol=lf

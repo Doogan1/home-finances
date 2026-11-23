@@ -15,10 +15,21 @@ const state = vi.hoisted(() => ({
   auth: undefined as unknown as Auth,
   db: undefined as unknown as PrismaClient,
   headers: new Headers(),
+  failQuestions: false,
 }));
 
 vi.mock("next/headers", () => ({ headers: async () => state.headers }));
 vi.mock("@/lib/config", () => ({ getServerConfig: () => ({ appUrl: BASE_URL }) }));
+vi.mock("@/features/forecast/did-it-clear", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/forecast/did-it-clear")>();
+  return {
+    ...actual,
+    openClearQuestions: async (...args: Parameters<typeof actual.openClearQuestions>) => {
+      if (state.failQuestions) throw new Error("count failed");
+      return actual.openClearQuestions(...args);
+    },
+  };
+});
 vi.mock("@/lib/db", () => ({ getDb: () => state.db }));
 vi.mock("@/lib/auth/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/auth")>()),
@@ -46,6 +57,7 @@ beforeEach(async () => {
   await truncateAll(owner);
   state.auth = createAuth({ db: state.db, secret: "accounts-secret-".padEnd(48, "a"), baseURL: BASE_URL });
   state.headers = new Headers();
+  state.failQuestions = false;
 });
 
 async function signIn(email: string) {
@@ -91,6 +103,17 @@ describe("hand-entered account routes", () => {
 
     const account = await owner.account.findUniqueOrThrow({ where: { id }, include: { balances: true } });
     expect([account.householdId, account.ownerLabel, account.balances[0].current?.toFixed()]).toEqual([householdId, "Shared", "500"]);
+  });
+
+  it("still answers 200 with the balances saved when counting the questions fails", async () => {
+    await signIn("a@example.test");
+    const { id } = (await (await createAccount(post({ name: "Ally Spend", kind: "checking" }))).json()) as { id: string };
+    await setTimeZone(post({ timeZone: "America/New_York" }));
+    state.failQuestions = true;
+    const recorded = await recordBalances(post({ asOfDate: "2026-11-14", entries: [{ accountId: id, balance: "500" }] }));
+    expect(recorded.status).toBe(200);
+    expect(await json(recorded)).toEqual({ recorded: 1, questions: 0 });
+    expect(await owner.balanceSnapshot.count({ where: { accountId: id } })).toBe(1);
   });
 
   it("refuses bad bodies with 400 and writes nothing", async () => {

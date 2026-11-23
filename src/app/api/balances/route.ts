@@ -19,7 +19,11 @@ export async function POST(request: Request) {
     const { householdId } = authorization.context;
     const recorded = await recordBalances(db, householdId, body);
     // The form offers the "Did it clear?" questions next when there are any.
-    const questions = (await openClearQuestions(db, householdId, { environment: getPlaidEnvironment() })).length;
+    // The balances are saved by now, so a failure counting them must not read as a failed save.
+    const questions = await openClearQuestions(db, householdId, { environment: getPlaidEnvironment() }).then(
+      (open) => open.length,
+      () => 0,
+    );
     return jsonNoStore({ ...recorded, questions });
   } catch (error) {
     return accountErrorResponse(error, "balances.record");

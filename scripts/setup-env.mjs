@@ -3,12 +3,41 @@
 // encryption key protecting stored tokens) is never clobbered by accident.
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const examplePath = join(root, ".env.example");
-const envPath = join(root, ".env");
+
+// Flags (both optional): --out <file> writes somewhere other than ./.env (the
+// server keeps its secrets in ~/home-finances/prod.env); --app-url <https url>
+// sets APP_URL, for an address other than localhost.
+const args = process.argv.slice(2);
+let outPath;
+let appUrl;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--out" && args[i + 1]) outPath = args[++i];
+  else if (args[i] === "--app-url" && args[i + 1]) appUrl = args[++i];
+  else {
+    console.error("Usage: node scripts/setup-env.mjs [--out <file>] [--app-url <https url>]");
+    process.exit(1);
+  }
+}
+if (appUrl !== undefined && !isPlainHttpsOrigin(appUrl)) {
+  console.error("--app-url must be an https:// address with no path, query or fragment, e.g. https://homelab.your-tailnet.ts.net");
+  process.exit(1);
+}
+
+function isPlainHttpsOrigin(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.origin === value.replace(/\/$/, "");
+  } catch {
+    return false;
+  }
+}
+
+const envPath = outPath ? resolve(outPath) : join(root, ".env");
 
 if (existsSync(envPath)) {
   console.error(".env already exists; leaving it untouched.");
@@ -42,6 +71,7 @@ values.set(
 );
 values.set("AUTH_SECRET", randomBytes(48).toString("hex"));
 values.set("TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+if (appUrl !== undefined) values.set("APP_URL", appUrl.replace(/\/$/, ""));
 
 // Rewrite the template line by line so comments and ordering are preserved.
 const output = readFileSync(examplePath, "utf8")
@@ -55,6 +85,6 @@ const output = readFileSync(examplePath, "utf8")
 
 writeFileSync(envPath, output, { mode: 0o600 });
 
-console.log("Created .env with new local secrets (values not shown).");
+console.log(`Created ${outPath ? envPath : ".env"} with new secrets (values not shown).`);
 console.log("Back up TOKEN_ENCRYPTION_KEY somewhere safe; stored bank tokens are unreadable without it.");
 console.log("Add your Plaid Sandbox PLAID_CLIENT_ID and PLAID_SECRET when you want to connect a bank.");

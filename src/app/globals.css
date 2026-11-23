@@ -306,3 +306,30 @@ button {
 .estimate {
   font-style: italic;
 }
+
+.main-nav {
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+.main-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  list-style: none;
+}
+
+.main-nav a {
+  color: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { UPCOMING_DAYS, type UpcomingItem } from "@/features/forecast/attention";
-import type { OccurrenceStatus } from "@/features/forecast/occurrences";
 import { formatIsoDate } from "@/features/rules/summary";
 import { signedMoney } from "./money";
-
-const STATUS: Record<OccurrenceStatus, string> = { PLANNED: "Planned", CONFIRMED: "Confirmed", PAID: "Paid", SKIPPED: "Skipped" };
+import { StatusChip } from "./status";
 
 export function NextDays({ items }: { items: UpcomingItem[] }) {
   if (items.length === 0) return <p className="muted">Nothing in the next {UPCOMING_DAYS} days.</p>;
@@ -24,7 +22,7 @@ export function NextDays({ items }: { items: UpcomingItem[] }) {
             <td>{formatIsoDate(o.date)}</td>
             <td>
               <Link href={`/bills/${o.ruleId}`}>{o.ruleName}</Link>
-              {o.status !== "PLANNED" && <span className="chip chip-muted">{STATUS[o.status]}</span>}
+              <StatusChip status={o.status} />
             </td>
             <td>{shares.map((s) => `${s.account.name} ${signedMoney(s.cents)}`).join(" · ")}</td>
             <td className={o.estimate ? "num estimate" : "num"} title={o.estimate ? "Estimate" : undefined}>

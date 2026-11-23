@@ -35,6 +35,17 @@ missing balances, "Did it clear?" for open items on a balance's date or in the
 45 days before it, and per-date edits a rule no longer produces. The forecast is a pure
 function and nothing it computes is stored.
 
+**Register, Calendar and the occurrence panel.** The Register lists one cash
+account's items with the balance after each, and the Calendar shows a month of
+them with each day's end-of-day balance; both come from the same forecast as
+Home, so the numbers always agree. Estimates are in italics; days below the
+cushion or below zero are tinted. Clicking any item opens its panel: mark it
+Confirmed (with the amount), Paid or Skipped, move this one date, or add a note,
+and see what that does to the account's lowest point before saving. Reset to rule
+deletes the edit. "Did it clear?" questions are answered on Home and right after
+Update balances: Cleared marks the item paid; Still pending moves it to the day
+after the balance.
+
 **Workbook import.** `npm run import:workbook -- imports/<file>.xlsx` (in the app
 container) brings the household's spreadsheet in once: accounts, balances, pay,
 bills and per-date edits. It is a dry run unless given `--apply`, prints every
@@ -270,7 +281,8 @@ src/lib/crypto/tokens.ts            authenticated token encryption (server-only)
 src/features/plaid/                  Plaid gateway (SDK), link flow, account refresh, formatting
 src/features/accounts/               hand-entered accounts and balances (service, input parsing, HTTP helpers); pages in src/app/accounts/
 src/features/rules/                  bills and income: the date calculations, splits and change planning (pure, shared with the forms), the request bodies, and the server-only reads and writes; pages in src/app/bills/
-src/features/forecast/               the forecast: latest balances, occurrences with edits, the daily series, Needs attention and chart geometry (pure), and the server-only loader
+src/app/register/, calendar/, occurrences/  the Register, the Calendar and the occurrence panel
+src/features/forecast/               the forecast: latest balances, occurrences with edits, the daily series, Needs attention, the Register's rows, the Calendar's grid and an edit's effect (pure), and the server-only loaders and "Did it clear?" answers
 src/features/import/                 the workbook import: reading the xlsx, the sheets, choices.json, the plan and its two checks (pure), and the server-only writer
 src/components/                     Plaid Link button and refresh button (client components)
 src/lib/auth/                       Better Auth config, requireHousehold, origin checks, password hashing

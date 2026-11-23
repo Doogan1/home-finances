@@ -71,6 +71,12 @@ describe("Did it clear?", () => {
     await expect(answer("cleared")).rejects.toMatchObject({ code: "question_not_found" });
   });
 
+  it("refuses Still pending once it was answered Cleared, leaving the row as it was", async () => {
+    await answer("cleared");
+    await expect(answer("pending")).rejects.toMatchObject({ code: "question_not_found" });
+    expect(await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId } })).toMatchObject({ status: "PAID", movedTo: null });
+  });
+
   it("Still pending moves it to the day after the balance, so the forecast counts it then", async () => {
     await answer("pending");
     expect(await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId } })).toMatchObject({ status: "PLANNED", movedTo: d("2026-11-15") });

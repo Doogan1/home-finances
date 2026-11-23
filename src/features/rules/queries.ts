@@ -58,7 +58,7 @@ function toRuleView(rule: Prisma.RuleGetPayload<{ include: typeof ruleInclude }>
   };
 }
 
-export async function listRules(db: PrismaClient, householdId: string): Promise<RuleView[]> {
+export async function listRules(db: PrismaClient | Prisma.TransactionClient, householdId: string): Promise<RuleView[]> {
   const rules = await db.rule.findMany({ where: { householdId }, include: ruleInclude, orderBy: { name: "asc" } });
   return rules.map(toRuleView);
 }
@@ -102,7 +102,7 @@ export async function listOverrides(db: PrismaClient, householdId: string, ruleI
 export type HouseholdOverride = OverrideView & { ruleId: string };
 
 /** Every per-date edit of the household's rules that are not archived, for the forecast. */
-export async function listHouseholdOverrides(db: PrismaClient, householdId: string): Promise<HouseholdOverride[]> {
+export async function listHouseholdOverrides(db: PrismaClient | Prisma.TransactionClient, householdId: string): Promise<HouseholdOverride[]> {
   const rows = await db.occurrenceOverride.findMany({
     where: { householdId, rule: { archivedAt: null } },
     orderBy: [{ scheduledOn: "asc" }, { ruleId: "asc" }],

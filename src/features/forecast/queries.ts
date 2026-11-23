@@ -1,5 +1,5 @@
 import "server-only";
-import type { PlaidEnvironment, PrismaClient } from "@/generated/prisma/client";
+import type { PlaidEnvironment, Prisma, PrismaClient } from "@/generated/prisma/client";
 import { listHouseholdOverrides, listRules } from "@/features/rules/queries";
 import type { IsoDate } from "@/lib/calendar-date";
 import { FORECAST_DAYS, type ForecastInput } from "./engine";
@@ -12,7 +12,7 @@ import { latestSnapshots, type SnapshotRow } from "./snapshots";
  * and their per-date edits. The engine itself never touches the database.
  */
 export async function loadForecastInput(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   householdId: string,
   options: { environment: PlaidEnvironment; timeZone: string; today: IsoDate; days?: number },
 ): Promise<ForecastInput> {

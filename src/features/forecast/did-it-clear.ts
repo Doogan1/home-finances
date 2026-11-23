@@ -1,5 +1,5 @@
 import "server-only";
-import type { PlaidEnvironment, PrismaClient } from "@/generated/prisma/client";
+import type { PlaidEnvironment, Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { ClearAnswerInput } from "@/features/rules/input";
 import { dateOf, lockRule, RuleInputError } from "@/features/rules/service";
 import { addDays, todayIn, type IsoDate } from "@/lib/calendar-date";
@@ -15,7 +15,7 @@ import { loadForecastInput } from "./queries";
 
 type Options = { environment: PlaidEnvironment; now?: Date };
 
-export async function openClearQuestions(db: PrismaClient, householdId: string, options: Options): Promise<ClearQuestion[]> {
+export async function openClearQuestions(db: PrismaClient | Prisma.TransactionClient, householdId: string, options: Options): Promise<ClearQuestion[]> {
   const { timeZone } = await db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
   if (!timeZone) return [];
   const today = todayIn(timeZone, options.now);
@@ -33,15 +33,21 @@ export async function answerClearQuestion(
   input: ClearAnswerInput,
   options: Options,
 ): Promise<void> {
-  const question = (await openClearQuestions(db, householdId, options)).find(
-    (q) => q.occurrence.ruleId === ruleId && q.occurrence.scheduledOn === scheduledOn && q.account.id === input.accountId,
-  );
-  if (!question) throw new RuleInputError("question_not_found");
-
-  const fields = input.answer === "cleared" ? { status: "PAID" as const } : { movedTo: dateOf(addDays(question.snapshotDate, 1)) };
   const scheduled = dateOf(scheduledOn);
   await db.$transaction(async (tx) => {
-    await lockRule(tx, householdId, ruleId);
+    // A rule that is not this household's, or is archived, has no open question.
+    await lockRule(tx, householdId, ruleId).catch((error: unknown) => {
+      if (error instanceof RuleInputError && (error.code === "rule_not_found" || error.code === "rule_archived")) {
+        throw new RuleInputError("question_not_found");
+      }
+      throw error;
+    });
+    // Checked under the lock, so a second answer or an edit saved meanwhile is seen.
+    const question = (await openClearQuestions(tx, householdId, options)).find(
+      (q) => q.occurrence.ruleId === ruleId && q.occurrence.scheduledOn === scheduledOn && q.account.id === input.accountId,
+    );
+    if (!question) throw new RuleInputError("question_not_found");
+    const fields = input.answer === "cleared" ? { status: "PAID" as const } : { movedTo: dateOf(addDays(question.snapshotDate, 1)) };
     await tx.occurrenceOverride.upsert({
       where: { ruleId_scheduledOn: { ruleId, scheduledOn: scheduled } },
       create: { householdId, ruleId, scheduledOn: scheduled, ...fields, updatedByUserId: userId },

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { addDays, todayIn } from "@/lib/calendar-date";
 import { createAuth, type Auth } from "@/lib/auth/auth";
 import { createHouseholdWithOwner } from "../scripts/lib/users.mjs";
 import { createTestClient, truncateAll } from "./helpers/test-db";
@@ -78,6 +79,9 @@ const { POST: createRule } = await import("@/app/api/rules/route");
 const { POST: archiveRule } = await import("@/app/api/rules/[id]/archive/route");
 const { POST: saveEdit } = await import("@/app/api/rules/[id]/occurrences/[date]/route");
 const { POST: resetEdit } = await import("@/app/api/rules/[id]/occurrences/[date]/reset/route");
+const { POST: clearAnswer } = await import("@/app/api/rules/[id]/occurrences/[date]/clear/route");
+const { POST: recordBalances } = await import("@/app/api/balances/route");
+const { POST: setTimeZone } = await import("@/app/api/household/time-zone/route");
 
 const at = (id: string, date: string) => ({ params: Promise.resolve({ id, date }) });
 const paid = { status: "PAID", confirmedAmount: null, movedTo: null, note: null };
@@ -144,5 +148,31 @@ describe("occurrence routes", () => {
     state.headers = new Headers();
     expect((await saveEdit(post(paid), at(id, "2026-12-01"))).status).toBe(401);
     expect((await resetEdit(post({}), at(id, "2026-12-01"))).status).toBe(401);
+  });
+
+  it("answers Did it clear?, which Update balances counts first", async () => {
+    const { householdId } = await signIn("owner@example.test");
+    const spend = await account(householdId, "Ally Spend");
+    expect((await setTimeZone(post({ timeZone: "America/New_York" }))).status).toBe(200);
+    const today = todayIn("America/New_York");
+    const yesterday = addDays(today, -1);
+    const bill = await createRule(
+      post({ kind: "BILL", name: "Electric", amount: "400", schedule: { recurrence: "ONCE", anchorDate: yesterday }, allocations: [{ accountId: spend, mode: "REMAINDER" }] }),
+    );
+    const { id } = (await json(bill)) as { id: string };
+
+    const recorded = await recordBalances(post({ asOfDate: today, entries: [{ accountId: spend, balance: "2000" }] }));
+    expect(await json(recorded)).toEqual({ recorded: 1, questions: 1 });
+
+    for (const body of [{ accountId: spend }, { accountId: spend, answer: "maybe" }, { accountId: "nope", answer: "cleared" }]) {
+      expect((await clearAnswer(post(body), at(id, yesterday))).status).toBe(400);
+    }
+    const cleared = await clearAnswer(post({ accountId: spend, answer: "cleared" }), at(id, yesterday));
+    expect(cleared.status).toBe(200);
+    expect(await json(cleared)).toEqual({ ok: true });
+
+    const again = await clearAnswer(post({ accountId: spend, answer: "cleared" }), at(id, yesterday));
+    expect(again.status).toBe(409);
+    expect(await json(again)).toMatchObject({ error: "question_not_found" });
   });
 });

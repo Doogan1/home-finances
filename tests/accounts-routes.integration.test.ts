@@ -87,7 +87,7 @@ describe("hand-entered account routes", () => {
     expect((await setTimeZone(post({ timeZone: "America/New_York" }))).status).toBe(200);
     const recorded = await recordBalances(post({ asOfDate: "2026-11-14", entries: [{ accountId: id, balance: "500" }] }));
     expect(recorded.status).toBe(200);
-    expect(await json(recorded)).toEqual({ recorded: 1 });
+    expect(await json(recorded)).toEqual({ recorded: 1, questions: 0 });
 
     const account = await owner.account.findUniqueOrThrow({ where: { id }, include: { balances: true } });
     expect([account.householdId, account.ownerLabel, account.balances[0].current?.toFixed()]).toEqual([householdId, "Shared", "500"]);

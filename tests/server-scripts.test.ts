@@ -31,6 +31,12 @@ describe("server shell scripts", () => {
     expect(service).toMatch(/^ExecStart=%h\/home-finances\/hf backup$/m);
   });
 
+  it("backup.sh never leaves a plaintext dump behind", () => {
+    const text = readFileSync("deploy/server/backup.sh", "utf8");
+    expect(text).toContain("command -v age");
+    expect(text).toMatch(/^trap 'rm -f "\$work"\/\*\.dump .*' EXIT$/m);
+  });
+
   it("env.sh names the production project, file and env file", () => {
     const env = readFileSync("deploy/server/env.sh", "utf8");
     expect(env).toContain("export COMPOSE_PROJECT_NAME=home-finances");

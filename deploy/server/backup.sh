@@ -13,8 +13,13 @@ backups="$HF_HOME/backups"
 work="$backups/.work"
 
 [ -s "$recipient" ] || { echo "No $recipient; see docs/homelab-deployment.md" >&2; exit 1; }
+command -v age > /dev/null || { echo "age is not installed; see docs/homelab-deployment.md" >&2; exit 1; }
 mkdir -p "$work"
 chmod 700 "$backups" "$work"
+# However this script ends (error, kill, Ctrl-C), no plaintext dump or half-written
+# encrypted file may stay behind. The EXIT trap also runs after a signal.
+trap 'rm -f "$work"/*.dump "$work"/*.partial "$backups"/*.age.partial' EXIT
+trap 'exit 1' INT TERM HUP
 rm -f "$work"/*.dump "$work"/*.partial
 
 # Verified by backup.mjs itself (readable archive, expected tables). Its notes

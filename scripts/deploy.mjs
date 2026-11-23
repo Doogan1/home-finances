@@ -42,19 +42,50 @@ async function must(command, commandArgs, what) {
   return result.out;
 }
 
-/** `git archive HEAD` piped straight into tar on the server; no shell, so the bytes are untouched. */
-function upload(id) {
+/**
+ * `git archive HEAD` piped straight into tar on the server; no shell, so the bytes are untouched.
+ * Extracts into <target>.partial and only renames it into place once both git and ssh
+ * succeeded, so a truncated archive is never promoted. Always resolves; never throws.
+ */
+async function upload(id) {
   const target = `${REMOTE_HOME}/releases/${id}`;
-  return new Promise((resolve) => {
+  const streamed = await new Promise((resolve) => {
+    let gitCode = null;
+    let sshCode = null;
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    const check = () => {
+      if (gitCode !== null && sshCode !== null) finish(gitCode === 0 && sshCode === 0);
+    };
     const git = spawn("git", ["archive", "--format=tar", "HEAD"], { stdio: ["ignore", "pipe", "inherit"], windowsHide: true });
     const ssh = spawn(
       "ssh",
-      [HOST, `rm -rf ${target}.partial && mkdir -p ${target}.partial && tar -x -C ${target}.partial && mv ${target}.partial ${target}`],
+      [HOST, `rm -rf ${target}.partial && mkdir -p ${target}.partial && tar -x -C ${target}.partial`],
       { stdio: ["pipe", "inherit", "inherit"], windowsHide: true },
     );
+    ssh.stdin.on("error", () => {}); // ssh may exit before reading everything (EPIPE); its exit code reports that
+    git.on("error", () => finish(false));
+    ssh.on("error", () => finish(false));
+    git.on("close", (code) => {
+      gitCode = code ?? 1;
+      check();
+    });
+    ssh.on("close", (code) => {
+      sshCode = code ?? 1;
+      check();
+    });
     git.stdout.pipe(ssh.stdin);
-    ssh.on("close", (code) => resolve(code === 0));
   });
+  if (streamed) {
+    const promoted = await run("ssh", [HOST, `mv ${target}.partial ${target}`]);
+    if (promoted.code === 0) return true;
+  }
+  await run("ssh", [HOST, `rm -rf ${target}.partial`]);
+  return false;
 }
 
 if (rollback) {

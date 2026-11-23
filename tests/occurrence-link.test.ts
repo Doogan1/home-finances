@@ -14,7 +14,7 @@ describe("safeBack", () => {
   });
 
   it("sends anything else home", () => {
-    for (const raw of [undefined, null, "", "https://evil.example/", "//evil.example", "/\evil.example", "/admin", "/bills/not-a-uuid", "javascript:alert(1)", `/register?account=nope`]) {
+    for (const raw of [undefined, null, "", "https://evil.example/", "//evil.example", "/\\evil.example", "/admin", "/bills/not-a-uuid", "javascript:alert(1)", `/register?account=nope`]) {
       expect(safeBack(raw).startsWith("/")).toBe(true);
       expect(["/", "/register"]).toContain(safeBack(raw));
     }

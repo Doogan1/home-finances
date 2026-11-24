@@ -7,6 +7,7 @@ import { postJson } from "../post-json";
 type Props = {
   id: string;
   manual: boolean;
+  renamable: boolean;
   isCash: boolean;
   name: string;
   ownerLabel: string | null;
@@ -14,7 +15,7 @@ type Props = {
   includeInForecast: boolean;
 };
 
-/** Edit and Archive for one account. Plaid-linked accounts keep their bank's name and cannot be archived here. */
+/** Edit and Archive for one account. Only hand-entered accounts are archived here; accounts that only came from a bank keep the bank's name. */
 export function AccountEditor(props: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -27,7 +28,7 @@ export function AccountEditor(props: Props) {
       ownerLabel: String(data.get("ownerLabel") ?? ""),
       cushion: String(data.get("cushion") ?? ""),
     };
-    if (props.manual) body.name = String(data.get("name") ?? "");
+    if (props.renamable) body.name = String(data.get("name") ?? "");
     if (props.isCash) body.includeInForecast = data.get("includeInForecast") === "on";
     const result = await postJson(`/api/accounts/${props.id}/update`, body);
     if (!result.ok) return setError(result.message);
@@ -65,7 +66,7 @@ export function AccountEditor(props: Props) {
 
   return (
     <form className="form" onSubmit={save}>
-      {props.manual && (
+      {props.renamable && (
         <label>
           Name
           <input name="name" defaultValue={props.name} required maxLength={80} />

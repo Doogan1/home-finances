@@ -149,6 +149,7 @@ async function Accounts() {
                   <AccountEditor
                     id={account.id}
                     manual={manual}
+                    renamable={manual || attached}
                     isCash={account.type === "depository"}
                     name={account.name}
                     ownerLabel={account.ownerLabel}

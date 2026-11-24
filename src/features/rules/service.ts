@@ -1,5 +1,6 @@
 import "server-only";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { HAND_MANAGED, isHandManaged } from "@/features/accounts/linking";
 import { parseIsoDate, type IsoDate } from "@/lib/calendar-date";
 import type { ChangeFromInput, CreateRuleInput, EditVersionInput, StopInput, UpdateRuleInput } from "./input";
 import { toStoredVersion, versionInclude } from "./queries";
@@ -47,11 +48,11 @@ const optionalDate = (value: IsoDate | null) => (value === null ? null : dateOf(
 async function checkAllocations(tx: Tx, householdId: string, kind: RuleKind, amount: string, allocations: AllocationLike[]) {
   const accounts = await tx.account.findMany({
     where: { householdId, id: { in: allocations.map((a) => a.accountId) } },
-    select: { id: true, type: true, plaidItemId: true, archivedAt: true },
+    select: { id: true, type: true, plaidItemId: true, attachedAt: true, archivedAt: true },
   });
   if (accounts.length !== allocations.length) throw new RuleInputError("account_not_found");
   if (accounts.some((a) => a.archivedAt !== null)) throw new RuleInputError("account_archived");
-  if (accounts.some((a) => a.plaidItemId !== null)) throw new RuleInputError("account_linked");
+  if (accounts.some((a) => !isHandManaged(a))) throw new RuleInputError("account_linked");
   const typeOf = new Map(accounts.map((a) => [a.id, a.type]));
   throwIf(allocationProblem(kind, amount, allocations.map((a) => ({ ...a, accountType: typeOf.get(a.accountId) ?? "" }))));
 }
@@ -60,7 +61,7 @@ async function checkPaysAccount(tx: Tx, householdId: string, kind: RuleKind, pay
   if (paysAccountId === null) return;
   if (kind !== "BILL") throw new RuleInputError("pays_account_invalid");
   const card = await tx.account.findFirst({
-    where: { id: paysAccountId, householdId, type: "credit", archivedAt: null, plaidItemId: null },
+    where: { id: paysAccountId, householdId, type: "credit", archivedAt: null, ...HAND_MANAGED },
     select: { id: true },
   });
   if (!card) throw new RuleInputError("pays_account_invalid");

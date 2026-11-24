@@ -241,3 +241,31 @@ describe("the account service", () => {
     expect((await latest())?.current?.toFixed()).toBe("789");
   });
 });
+
+describe("an account with a bank attached", () => {
+  it("can be renamed, but not archived while it is attached", async () => {
+    const item = await seedConnection(owner, householdId);
+    const attached = await seedAttached(owner, householdId, item.id);
+
+    await updateAccount(app, householdId, attached.id, { name: "Joint spending" });
+
+    expect((await owner.account.findUniqueOrThrow({ where: { id: attached.id } })).name).toBe("Joint spending");
+    await expectCode(archiveManualAccount(app, householdId, attached.id), "not_manual");
+  });
+
+  it("takes typed balances only once its bank is disconnected; a bank-only account never does", async () => {
+    await setHouseholdTimeZone(app, householdId, "America/New_York");
+    const item = await seedConnection(owner, householdId);
+    const attached = await seedAttached(owner, householdId, item.id);
+    const bankOnly = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, attachedAt: null } });
+    const at = new Date("2026-11-14T18:00:00Z");
+    const typed = (accountId: string) => recordBalances(app, householdId, balances("2026-11-14", [{ accountId, balance: "10" }]), at);
+
+    await expectCode(typed(attached.id), "not_manual");
+
+    await owner.plaidItem.update({ where: { id: item.id }, data: { status: "DISCONNECTED", accessTokenCiphertext: null } });
+
+    await expect(typed(attached.id)).resolves.toEqual({ recorded: 1 });
+    await expectCode(typed(bankOnly.id), "not_manual");
+  });
+});

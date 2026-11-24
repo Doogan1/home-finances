@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BalancesForm, type BalanceRow } from "@/components/accounts/balances-form";
 import { TimeZoneForm } from "@/components/accounts/time-zone-form";
+import { acceptsManualBalances } from "@/features/accounts/linking";
 import { latestBalances } from "@/features/accounts/latest-balance";
 import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { formatDate, formatMoney, formatTimestamp } from "@/features/plaid/format";
@@ -41,10 +42,12 @@ async function Balances() {
     );
   }
   const timeZone = household.timeZone;
-  // Not archived. Plaid-linked accounts (current Plaid environment only) are
-  // listed read-only: their balances come from the bank.
+  // Not archived. Accounts whose balances come from a bank (current Plaid
+  // environment only) are listed read-only; an attached account whose bank is
+  // disconnected takes typed balances again.
   const accounts = await db.account.findMany({
     where: { householdId, archivedAt: null, OR: [{ plaidItemId: null }, { plaidItem: { environment } }] },
+    include: { plaidItem: { select: { status: true } } },
     orderBy: { name: "asc" },
   });
   if (accounts.length === 0) {
@@ -63,7 +66,7 @@ async function Balances() {
       name: account.name,
       ownerLabel: account.ownerLabel,
       owedLabel: account.type === "credit",
-      synced: account.plaidItemId !== null,
+      synced: !acceptsManualBalances({ ...account, connectionStatus: account.plaidItem?.status ?? null }),
       last: last
         ? {
             amount: formatMoney(last.current?.toFixed() ?? null, last.currency),

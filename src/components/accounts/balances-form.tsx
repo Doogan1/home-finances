@@ -10,7 +10,7 @@ export type BalanceRow = {
   name: string;
   ownerLabel: string | null;
   owedLabel: boolean;
-  /** Plaid-linked: shown read-only, never submitted. */
+  /** Balances come from the bank: shown read-only, never submitted. */
   synced: boolean;
   last: { amount: string; asOf: string } | null;
 };

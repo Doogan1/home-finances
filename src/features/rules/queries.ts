@@ -1,5 +1,6 @@
 import "server-only";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { HAND_MANAGED } from "@/features/accounts/linking";
 import { toIsoDate, type IsoDate } from "@/lib/calendar-date";
 import type { AccountChoice } from "./form-drafts";
 import type { RuleKind, StoredVersion } from "./versions";
@@ -110,10 +111,10 @@ export async function listHouseholdOverrides(db: PrismaClient | Prisma.Transacti
   return rows.map((row) => ({ ruleId: row.ruleId, ...toOverrideView(row) }));
 }
 
-/** Accounts a rule can use now: entered by hand and not archived. */
+/** Accounts a rule can use now: the person's own (entered by hand, with or without a bank attached) and not archived. */
 export async function listAccountChoices(db: PrismaClient, householdId: string): Promise<AccountChoice[]> {
   return db.account.findMany({
-    where: { householdId, archivedAt: null, plaidItemId: null },
+    where: { householdId, archivedAt: null, ...HAND_MANAGED },
     select: { id: true, name: true, type: true },
     orderBy: { name: "asc" },
   });

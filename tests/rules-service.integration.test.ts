@@ -5,7 +5,7 @@ import { changeFromInput, createRuleInput, editVersionInput, stopInput, updateRu
 import { getRule, listAccountChoices, listRules } from "@/features/rules/queries";
 import { archiveRule, changeRuleFrom, createRule, editRuleVersion, stopRule, updateRule } from "@/features/rules/service";
 import { addDays } from "@/lib/calendar-date";
-import { seedConnection, seedPerson } from "./helpers/plaid-fixtures";
+import { seedAttached, seedConnection, seedPerson } from "./helpers/plaid-fixtures";
 import { createTestClient, truncateAll } from "./helpers/test-db";
 
 const { ownerUrl, appUrl } = inject("testDatabase");
@@ -320,5 +320,34 @@ describe("archiving an account a rule uses", () => {
     await archiveRule(app, householdId, id);
     await archiveManualAccount(app, householdId, pnc, NOW);
     expect((await owner.account.findUniqueOrThrow({ where: { id: pnc } })).archivedAt).not.toBeNull();
+  });
+});
+
+describe("accounts with a bank attached", () => {
+  it("are used by bills and income like hand-entered ones; accounts only from a bank still are not", async () => {
+    const item = await seedConnection(owner, householdId);
+    const attached = await seedAttached(owner, householdId, item.id, { name: "Joint checking" });
+    const attachedCard = await seedAttached(owner, householdId, item.id, {
+      name: "Joint card",
+      type: "credit",
+      subtype: "credit card",
+      externalAccountId: "acct_card",
+    });
+    const bankOnly = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, attachedAt: null } });
+    const only = (accountId: string) => [{ accountId, mode: "REMAINDER" }];
+
+    const { id } = await createRule(app, householdId, mortgage({ name: "Rent", allocations: only(attached.id) }));
+    await changeRuleFrom(app, householdId, id, changeFromInput.parse({ from: "2027-01-01", amount: "1900", allocations: only(attached.id) }));
+    await createRule(app, householdId, mortgage({ name: "Card payment", paysAccountId: attachedCard.id }));
+    await expectCode(createRule(app, householdId, mortgage({ name: "Other", allocations: only(bankOnly.id) })), "account_linked");
+
+    expect((await listAccountChoices(app, householdId)).map((a) => a.name)).toEqual([
+      "Ally Savings",
+      "Ally Spend",
+      "Amex",
+      "Joint card",
+      "Joint checking",
+      "PNC",
+    ]);
   });
 });

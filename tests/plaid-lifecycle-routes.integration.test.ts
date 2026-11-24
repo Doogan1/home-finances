@@ -271,6 +271,20 @@ describe("POST …/delete-history", () => {
     expect(await response.json()).toMatchObject({ error: "not_disconnected" });
     expect(await owner.plaidItem.count()).toBe(1);
   });
+
+  it("needs no Plaid credentials, since it never calls Plaid", async () => {
+    const item = await disconnectedItem();
+    state.linkDeps = () => {
+      throw new PlaidNotConfiguredError();
+    };
+    const POST = await routes.deleteHistory();
+
+    const response = await POST(post({ confirm: "DELETE" }), withId(item.id));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ deleted: true, detached: 0 });
+    expect(await owner.plaidItem.count()).toBe(0);
+  });
 });
 
 describe("POST /api/plaid/oauth/resume", () => {

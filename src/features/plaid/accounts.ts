@@ -65,8 +65,10 @@ export async function refreshItemAccounts(
     await db.$transaction(async (tx) => {
       const existing = await tx.account.findMany({
         where: { plaidItemId: item.id },
-        select: { id: true, externalAccountId: true, active: true },
+        select: { id: true, externalAccountId: true, active: true, attachedAt: true },
       });
+      // An attached account is a hand-entered one the person named: keep its name.
+      const keepName = new Set(existing.filter((a) => a.attachedAt !== null).map((a) => a.externalAccountId));
       const returned = new Set<string>();
 
       for (const provided of fetched.accounts) {
@@ -87,7 +89,7 @@ export async function refreshItemAccounts(
             currency: provided.currency,
           },
           update: {
-            name: provided.name,
+            ...(keepName.has(provided.externalAccountId) ? {} : { name: provided.name }),
             officialName: provided.officialName,
             mask: provided.mask,
             type: provided.type,

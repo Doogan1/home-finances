@@ -13,11 +13,13 @@ import {
   LINK_TOKEN,
   PUBLIC_TOKEN,
   SECRET_IN_SDK_ERRORS,
+  account,
+  accountsGetResponse,
   createFakePlaidApi,
   networkError,
   sdkError,
 } from "./helpers/fake-plaid";
-import { cipher, makeDeps, seedConnection, seedPerson, vault } from "./helpers/plaid-fixtures";
+import { cipher, makeDeps, seedAttached, seedConnection, seedPerson, vault } from "./helpers/plaid-fixtures";
 import { createTestClient, truncateAll } from "./helpers/test-db";
 
 // Reconnect (update mode), disconnect, local history deletion and the OAuth
@@ -464,5 +466,128 @@ describe("refresh after disconnect", () => {
       code: "connection_not_found",
     });
     expect(api.accountsGet).not.toHaveBeenCalled();
+  });
+});
+
+describe("accounts attached to hand-entered ones", () => {
+  it("a refresh updates an attached account's bank details and balance, but keeps the person's name for it", async () => {
+    const person = await seedPerson(owner, "a@example.test");
+    const item = await seedConnection(owner, person.householdId);
+    // As attach leaves it: the hand-entered account carries the bank account's key.
+    await owner.account.deleteMany({ where: { plaidItemId: item.id, externalAccountId: "item_synthetic_1_checking" } });
+    const attached = await seedAttached(owner, person.householdId, item.id, { externalAccountId: "item_synthetic_1_checking" });
+    api.accountsGet.mockResolvedValueOnce({
+      data: accountsGetResponse([
+        account({ account_id: "item_synthetic_1_checking", name: "Plaid Checking", mask: "0000" }),
+        account({ account_id: "item_synthetic_1_savings", name: "Plaid Saving", subtype: "savings", mask: "1111" }),
+      ]),
+    });
+
+    await refreshItemAccounts(deps(), person.householdId, item.id);
+
+    const after = await owner.account.findUniqueOrThrow({ where: { id: attached.id } });
+    expect([after.name, after.mask, after.active]).toEqual(["Ally Spend", "0000", true]);
+    expect(await owner.balanceSnapshot.count({ where: { accountId: attached.id, source: "ACCOUNTS_GET" } })).toBe(1);
+    const bankOnly = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, attachedAt: null } });
+    expect(bankOnly.name).toBe("Plaid Saving");
+    expect(await owner.account.count({ where: { plaidItemId: item.id } })).toBe(2);
+  });
+
+  it("disconnecting keeps an attached account in use, even one the bank had stopped reporting", async () => {
+    const person = await seedPerson(owner, "a@example.test");
+    const item = await seedConnection(owner, person.householdId);
+    const attached = await seedAttached(owner, person.householdId, item.id);
+    await owner.account.update({ where: { id: attached.id }, data: { active: false, unavailableSince: clock } });
+
+    await disconnectConnection(deps(), person.householdId, item.id);
+
+    const after = await owner.account.findUniqueOrThrow({ where: { id: attached.id } });
+    expect([after.active, after.unavailableSince]).toEqual([true, null]);
+    const bankOnly = await owner.account.findMany({ where: { plaidItemId: item.id, attachedAt: null } });
+    expect(bankOnly.map((a) => a.active)).toEqual([false, false]);
+  });
+
+  async function disconnectedWithAttached() {
+    const person = await seedPerson(owner, "a@example.test");
+    const item = await seedConnection(owner, person.householdId, { status: "DISCONNECTED", token: null });
+    const attached = await seedAttached(owner, person.householdId, item.id);
+    await owner.account.update({ where: { id: attached.id }, data: { mask: "9999", officialName: "Synthetic Official Name" } });
+    const day = new Date("2026-11-01T00:00:00Z");
+    await owner.balanceSnapshot.create({
+      data: { accountId: attached.id, observedAt: clock, asOfDate: day, current: "500", currency: "USD", source: "MANUAL" },
+    });
+    await owner.balanceSnapshot.create({
+      data: { accountId: attached.id, observedAt: clock, current: "600", currency: "USD", source: "ACCOUNTS_GET" },
+    });
+    await owner.transaction.create({
+      data: {
+        accountId: attached.id,
+        plaidItemId: item.id,
+        providerTransactionId: "txn_synthetic_1",
+        amount: "12.34",
+        currency: "USD",
+        date: day,
+        description: "Synthetic purchase",
+      },
+    });
+    const start = new Date("2026-12-01T00:00:00Z");
+    await owner.rule.create({
+      data: {
+        householdId: person.householdId,
+        name: "Synthetic bill",
+        kind: "BILL",
+        versions: {
+          create: {
+            effectiveFrom: start,
+            amount: "25",
+            recurrence: "MONTHLY",
+            anchorDate: start,
+            dayOfMonth: 1,
+            allocations: { create: { accountId: attached.id, mode: "REMAINDER" } },
+          },
+        },
+      },
+    });
+    return { ...person, item, attached };
+  }
+
+  it("deleting saved history gives an attached account back to hand entry, keeping what the person entered", async () => {
+    const { householdId, item, attached } = await disconnectedWithAttached();
+
+    await expect(deleteConnectionHistory(deps(), householdId, item.id)).resolves.toEqual({ detached: 1 });
+
+    expect(await owner.plaidItem.count()).toBe(0);
+    expect(await owner.account.findUniqueOrThrow({ where: { id: attached.id } })).toMatchObject({
+      name: "Ally Spend",
+      plaidItemId: null,
+      externalAccountId: null,
+      attachedAt: null,
+      mask: null,
+      officialName: null,
+      active: true,
+      unavailableSince: null,
+    });
+    const snapshots = await owner.balanceSnapshot.findMany({ where: { accountId: attached.id } });
+    expect(snapshots.map((s) => [s.source, s.current?.toFixed()])).toEqual([["MANUAL", "500"]]);
+    expect(await owner.transaction.count()).toBe(0);
+    expect(await owner.allocation.count({ where: { accountId: attached.id } })).toBe(1);
+    // Accounts that only came from the bank are deleted, with their balances, as before.
+    expect(await owner.account.count()).toBe(1);
+    expect(await owner.balanceSnapshot.count()).toBe(1);
+  });
+
+  it("changes nothing if the delete cannot finish", async () => {
+    const { householdId, item, attached } = await disconnectedWithAttached();
+    // A bank-only account that a rule points at cannot be deleted (RESTRICT), so the whole delete must fail.
+    const bankOnly = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, attachedAt: null } });
+    const version = await owner.ruleVersion.findFirstOrThrow();
+    await owner.allocation.create({ data: { ruleVersionId: version.id, accountId: bankOnly.id, mode: "PERCENT", value: "10" } });
+
+    await expect(deleteConnectionHistory(deps(), householdId, item.id)).rejects.toThrow();
+
+    expect(await owner.plaidItem.count()).toBe(1);
+    expect(await owner.account.findUniqueOrThrow({ where: { id: attached.id } })).toMatchObject({ plaidItemId: item.id, attachedAt: expect.any(Date) });
+    expect(await owner.transaction.count()).toBe(1);
+    expect(await owner.balanceSnapshot.count({ where: { accountId: attached.id } })).toBe(2);
   });
 });

@@ -123,9 +123,16 @@ export async function disconnectConnection(
       },
     });
     if (changed.count === 1) {
+      // Accounts that only came from the bank are no longer reported. An attached
+      // account goes on as a hand-entered one: still forecast, and it takes typed
+      // balances again (src/features/accounts/linking.ts).
       await tx.account.updateMany({
-        where: { plaidItemId: item.id, active: true },
+        where: { plaidItemId: item.id, attachedAt: null, active: true },
         data: { active: false, unavailableSince: now },
+      });
+      await tx.account.updateMany({
+        where: { plaidItemId: item.id, attachedAt: { not: null } },
+        data: { active: true, unavailableSince: null },
       });
     }
   });
@@ -137,12 +144,19 @@ export async function disconnectConnection(
  * Deletes a DISCONNECTED connection and everything saved under it (accounts,
  * balance observations, transactions). A separate, deliberate step from
  * disconnecting; refuses for a connection that is still connected.
+ *
+ * An attached account is the person's own, so it is detached instead: its bank
+ * transactions and bank balances are deleted, then one update clears its Plaid
+ * link and attachment (the database requires both Plaid fields to change
+ * together, so this is never left to an ON DELETE rule), and it goes back to
+ * being entered by hand with its typed balances, bills and income. All of it is
+ * one transaction. It never calls Plaid, so it needs no Plaid credentials.
  */
 export async function deleteConnectionHistory(
-  deps: LinkDeps,
+  deps: Pick<LinkDeps, "db" | "environment">,
   householdId: string,
   connectionId: string,
-): Promise<void> {
+): Promise<{ detached: number }> {
   const { db, environment } = deps;
   const item = await db.plaidItem.findFirst({
     where: { id: connectionId, householdId, environment },
@@ -151,9 +165,39 @@ export async function deleteConnectionHistory(
   if (!item) throw new PlaidFlowError("connection_not_found");
   if (item.status !== "DISCONNECTED") throw new PlaidFlowError("not_disconnected");
 
-  // The status is part of the delete, so a reconnect racing this cannot lose data.
-  const deleted = await db.plaidItem.deleteMany({
-    where: { id: connectionId, householdId, status: "DISCONNECTED" },
+  return db.$transaction(async (tx) => {
+    // The status is part of the lock, so a reconnect racing this cannot lose data.
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      select id from "PlaidItem"
+      where id = ${connectionId}::uuid and "householdId" = ${householdId}::uuid and status = 'DISCONNECTED'
+      for update`;
+    if (locked.length !== 1) throw new PlaidFlowError("not_disconnected");
+
+    const attached = await tx.account.findMany({
+      where: { plaidItemId: connectionId, attachedAt: { not: null } },
+      select: { id: true },
+    });
+    const ids = attached.map((account) => account.id);
+    if (ids.length > 0) {
+      // Transactions reference (account, connection), so they go before the link does.
+      await tx.transaction.deleteMany({ where: { accountId: { in: ids } } });
+      await tx.balanceSnapshot.deleteMany({ where: { accountId: { in: ids }, source: { not: "MANUAL" } } });
+      await tx.account.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          plaidItemId: null,
+          externalAccountId: null,
+          attachedAt: null,
+          mask: null,
+          officialName: null,
+          active: true,
+          unavailableSince: null,
+        },
+      });
+    }
+
+    const deleted = await tx.plaidItem.deleteMany({ where: { id: connectionId, householdId, status: "DISCONNECTED" } });
+    if (deleted.count !== 1) throw new PlaidFlowError("not_disconnected");
+    return { detached: ids.length };
   });
-  if (deleted.count !== 1) throw new PlaidFlowError("not_disconnected");
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestSnapshots, snapshotDate, type SnapshotRow } from "@/features/forecast/snapshots";
+import { isLaterSnapshot, latestByAccount, latestSnapshots, snapshotDate, type SnapshotRow } from "@/features/forecast/snapshots";
 
 const NY = "America/New_York";
 const row = (accountId: string, asOf: string | null, observedAt: string, current = "100"): SnapshotRow => ({
@@ -54,5 +54,29 @@ describe("latestSnapshots", () => {
 
   it("has nothing for no rows", () => {
     expect(latestSnapshots([], NY).size).toBe(0);
+  });
+});
+
+describe("isLaterSnapshot", () => {
+  it("compares the dates first, then when each was observed", () => {
+    const typed = row("a", "2026-11-10", "2026-11-14T17:00:00Z");
+    const bank = row("a", null, "2026-11-12T15:00:00Z"); // Nov 12 in New York
+    expect(isLaterSnapshot(bank, typed, NY)).toBe(true);
+    expect(isLaterSnapshot(typed, bank, NY)).toBe(false);
+    expect(isLaterSnapshot(typed, typed, NY)).toBe(false);
+  });
+});
+
+describe("latestByAccount", () => {
+  it("keeps each account's latest row whole, by the same rule as latestSnapshots", () => {
+    const typed = { ...row("a", "2026-11-14", "2026-11-14T20:00:00Z", "1"), source: "MANUAL", note: "typed" };
+    const bank = { ...row("a", null, "2026-11-15T03:00:00Z", "2"), source: "ACCOUNTS_GET", note: null };
+    const other = { ...row("b", null, "2026-11-01T12:00:00Z", "3"), source: "ACCOUNTS_GET", note: null };
+
+    const latest = latestByAccount([typed, bank, other], NY);
+
+    expect(latest.get("a")).toBe(bank);
+    expect(latest.get("b")).toBe(other);
+    expect(latestSnapshots([typed, bank, other], NY).get("a")?.balance).toBe("2");
   });
 });

@@ -202,8 +202,36 @@ describe("the account service", () => {
     await recordBalances(app, householdId, balances("2026-11-14", [{ accountId: a.id, balance: "500" }]), new Date("2026-11-14T18:00:00Z"));
     await recordBalances(app, householdId, balances("2026-11-10", [{ accountId: a.id, balance: "123" }]), new Date("2026-11-14T19:00:00Z"));
 
-    const [account] = await listAccountsWithLatestBalance(app, householdId, "SANDBOX");
+    const [account] = await listAccountsWithLatestBalance(app, householdId, "SANDBOX", "America/New_York");
     expect(account.plaidItem).toBeNull();
-    expect(account.balances[0].current?.toFixed()).toBe("500");
+    expect(account.balance?.current?.toFixed()).toBe("500");
+  });
+
+  it("shows the latest balance across both kinds: by date, then by when it was observed", async () => {
+    await setHouseholdTimeZone(app, householdId, "America/New_York");
+    const item = await seedConnection(owner, householdId);
+    const attached = await seedAttached(owner, householdId, item.id);
+    const snapshot = (data: { observedAt: string; asOfDate?: string; current: string; source: "MANUAL" | "ACCOUNTS_GET" }) =>
+      owner.balanceSnapshot.create({
+        data: {
+          accountId: attached.id,
+          observedAt: new Date(data.observedAt),
+          asOfDate: data.asOfDate ? new Date(`${data.asOfDate}T00:00:00Z`) : null,
+          current: data.current,
+          currency: "USD",
+          source: data.source,
+        },
+      });
+    const latest = async () =>
+      (await listAccountsWithLatestBalance(app, householdId, "SANDBOX", "America/New_York")).find((a) => a.id === attached.id)?.balance;
+
+    await snapshot({ observedAt: "2026-11-14T18:00:00Z", asOfDate: "2026-11-10", current: "123", source: "MANUAL" });
+    await snapshot({ observedAt: "2026-11-12T15:00:00Z", current: "456", source: "ACCOUNTS_GET" }); // Nov 12 in New York
+    // Ordering by as-of date with nulls last would show the typed Nov 10 balance.
+    expect((await latest())?.current?.toFixed()).toBe("456");
+
+    await snapshot({ observedAt: "2026-11-14T19:00:00Z", asOfDate: "2026-11-14", current: "789", source: "MANUAL" });
+    expect(await latest()).toMatchObject({ source: "MANUAL" });
+    expect((await latest())?.current?.toFixed()).toBe("789");
   });
 });

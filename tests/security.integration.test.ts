@@ -197,7 +197,7 @@ describe("one household can never reach another's data", () => {
   it("queries return only the signed-in household's rows", async () => {
     const env = "SANDBOX" as const;
     const connections = await listConnections(state.db, b.householdId, env);
-    const accounts = await listAccountsWithLatestBalance(state.db, b.householdId, env);
+    const accounts = await listAccountsWithLatestBalance(state.db, b.householdId, env, null);
     const transactions = await listRecentTransactions(state.db, b.householdId, env);
     const sync = await listSyncStatus(state.db, b.householdId, env);
 

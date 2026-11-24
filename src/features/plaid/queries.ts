@@ -1,5 +1,6 @@
 import "server-only";
 import type { PlaidEnvironment, PrismaClient } from "@/generated/prisma/client";
+import { latestBalances } from "@/features/accounts/latest-balance";
 
 /**
  * Household-scoped reads for the connections and accounts pages. Each takes the
@@ -23,25 +24,22 @@ export function listConnections(db: PrismaClient, householdId: string, environme
 /**
  * Every account the page may show: those entered by hand, plus those from
  * connections in the active Plaid environment (so Sandbox and live data are
- * never shown together). The newest balance comes first: by the date it was
- * true for hand-entered balances, then by when it was observed.
+ * never shown together), each with its latest balance by the forecast's rule
+ * (src/features/accounts/latest-balance.ts).
  */
-export function listAccountsWithLatestBalance(
+export async function listAccountsWithLatestBalance(
   db: PrismaClient,
   householdId: string,
   environment: PlaidEnvironment,
+  timeZone: string | null,
 ) {
-  return db.account.findMany({
+  const accounts = await db.account.findMany({
     where: { householdId, OR: [{ plaidItemId: null }, { plaidItem: { environment } }] },
-    include: {
-      plaidItem: { select: { id: true, institutionName: true, status: true } },
-      balances: {
-        orderBy: [{ asOfDate: { sort: "desc", nulls: "last" } }, { observedAt: "desc" }],
-        take: 1,
-      },
-    },
+    include: { plaidItem: { select: { id: true, institutionName: true, status: true } } },
     orderBy: [{ archivedAt: { sort: "desc", nulls: "first" } }, { plaidItem: { createdAt: "asc" } }, { name: "asc" }],
   });
+  const latest = await latestBalances(db, accounts.map((account) => account.id), timeZone);
+  return accounts.map((account) => ({ ...account, balance: latest.get(account.id) ?? null }));
 }
 
 /**

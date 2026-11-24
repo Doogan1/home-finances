@@ -45,10 +45,8 @@ function balanceLabels(type: string) {
 async function Accounts() {
   const { householdId } = await requireHouseholdOrRedirect();
   const db = getDb();
-  const [household, accounts] = await Promise.all([
-    db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } }),
-    listAccountsWithLatestBalance(db, householdId, getPlaidEnvironment()),
-  ]);
+  const household = await db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
+  const accounts = await listAccountsWithLatestBalance(db, householdId, getPlaidEnvironment(), household.timeZone);
   const now = new Date();
   const today = household.timeZone ? todayIn(household.timeZone, now) : null;
 
@@ -72,14 +70,19 @@ async function Accounts() {
       ) : (
         <ul className="cards">
           {accounts.map((account) => {
-            const balance = account.balances[0] ?? null;
+            const balance = account.balance;
             const labels = balanceLabels(account.type);
             const manual = account.plaidItem === null;
+            const attached = account.attachedAt !== null;
+            const disconnected = account.plaidItem?.status === "DISCONNECTED";
+            const bank = account.plaidItem?.institutionName ?? "Bank";
             const archived = account.archivedAt !== null;
-            const manualAsOf = balance?.asOfDate ? toIsoDate(balance.asOfDate) : null;
+            // A typed-in balance is true at the end of its as-of date; a bank one
+            // is dated by when it was observed. Which one is shown decides how.
+            const typedAsOf = balance?.source === "MANUAL" && balance.asOfDate ? toIsoDate(balance.asOfDate) : null;
             const stale = balance
-              ? manualAsOf
-                ? today !== null && daysBetween(manualAsOf, today) > 7
+              ? typedAsOf
+                ? today !== null && daysBetween(typedAsOf, today) > 7
                 : now.getTime() - balance.observedAt.getTime() > STALE_AFTER_MS
               : false;
             return (
@@ -88,14 +91,14 @@ async function Accounts() {
                   {account.name} {!manual && <span className="muted">{maskAccount(account.mask)}</span>}
                   {account.ownerLabel && <span className="chip">{account.ownerLabel}</span>}
                   {archived && <span className="chip chip-muted">Archived</span>}
-                  {!manual && !account.active && (
-                    <span className="chip chip-muted">
-                      {account.plaidItem?.status === "DISCONNECTED" ? "Disconnected · history kept" : "Not reported by bank"}
-                    </span>
+                  {attached && disconnected && <span className="chip chip-muted">Bank disconnected · enter balances by hand</span>}
+                  {!manual && !account.active && !(attached && disconnected) && (
+                    <span className="chip chip-muted">{disconnected ? "Disconnected · history kept" : "Not reported by bank"}</span>
                   )}
                 </h2>
                 <p className="muted">
-                  {manual ? "Entered by hand" : (account.plaidItem?.institutionName ?? "Bank")} · {account.subtype ?? account.type}
+                  {manual ? "Entered by hand" : attached ? `Entered by hand, attached to ${bank}` : bank} ·{" "}
+                  {account.subtype ?? account.type}
                   {account.cushion !== null && <> · cushion {formatMoney(account.cushion.toFixed(), account.currency)}</>}
                 </p>
                 {balance ? (
@@ -105,7 +108,7 @@ async function Accounts() {
                         <dt>{labels.current}</dt>
                         <dd>{formatMoney(balance.current?.toFixed() ?? null, balance.currency)}</dd>
                       </div>
-                      {!manual && (
+                      {typedAsOf === null && (
                         <div>
                           <dt>{labels.available}</dt>
                           <dd>{formatMoney(balance.available?.toFixed() ?? null, balance.currency)}</dd>
@@ -120,8 +123,8 @@ async function Accounts() {
                     </dl>
                     <p className="muted">
                       As of{" "}
-                      {balance.asOfDate ? (
-                        <time dateTime={manualAsOf ?? undefined}>{formatDate(balance.asOfDate)}</time>
+                      {typedAsOf && balance.asOfDate ? (
+                        <time dateTime={typedAsOf}>{formatDate(balance.asOfDate)}</time>
                       ) : (
                         <>
                           <time dateTime={balance.observedAt.toISOString()}>{formatTimestamp(balance.observedAt)}</time> (
@@ -133,7 +136,7 @@ async function Accounts() {
                       {account.unavailableSince && (
                         <>
                           {" "}
-                          · {account.plaidItem?.status === "DISCONNECTED" ? "disconnected" : "bank stopped reporting this account"}{" "}
+                          · {disconnected ? "disconnected" : "bank stopped reporting this account"}{" "}
                           {formatTimestamp(account.unavailableSince)}
                         </>
                       )}

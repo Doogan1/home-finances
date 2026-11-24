@@ -12,7 +12,7 @@ type Service = {
   volumes?: string[];
 };
 const compose = parse(readFileSync("compose.prod.yaml", "utf8")) as { services: Record<string, Service> };
-const { app, db, migrate } = compose.services;
+const { app, db, migrate, preflight } = compose.services;
 
 const APP_ENV = [
   "APP_URL",
@@ -29,8 +29,8 @@ const APP_ENV = [
 ];
 
 describe("compose.prod.yaml", () => {
-  it("has exactly the database, the one-off migrate job and the app", () => {
-    expect(Object.keys(compose.services).sort()).toEqual(["app", "db", "migrate"]);
+  it("has exactly the database, the two one-off jobs and the app", () => {
+    expect(Object.keys(compose.services).sort()).toEqual(["app", "db", "migrate", "preflight"]);
   });
 
   it("gives the app only what it reads, never the owner credentials", () => {
@@ -42,6 +42,7 @@ describe("compose.prod.yaml", () => {
     expect(app.ports).toEqual(["127.0.0.1:3000:3000"]);
     expect(db.ports).toBeUndefined();
     expect(migrate.ports).toBeUndefined();
+    expect(preflight.ports).toBeUndefined();
   });
 
   it("builds the production and tools targets, tagged by release", () => {
@@ -56,8 +57,18 @@ describe("compose.prod.yaml", () => {
     expect(Object.keys(migrate.environment ?? {}).sort()).toEqual(["APP_DB_PASSWORD", "APP_DB_USER", "MIGRATION_DATABASE_URL"]);
   });
 
+  it("runs the pre-flight only when asked, in the tools image, with the app's own settings", () => {
+    expect(preflight.profiles).toEqual(["ops"]);
+    expect(preflight.build).toBeUndefined(); // the deploy builds this image for migrate
+    expect(preflight.image).toBe("home-finances-tools:${RELEASE:?set by deploy/server/env.sh}");
+    expect(preflight.command).toEqual(["npm", "run", "preflight"]);
+    // It checks the app's database role, so it connects exactly as the app does.
+    expect(preflight.environment).toEqual(app.environment);
+    expect(JSON.stringify(preflight)).not.toMatch(/MIGRATION_DATABASE_URL|POSTGRES_|APP_DB_PASSWORD|env_file/);
+  });
+
   it("mounts no host folders, so SELinux labels never matter", () => {
-    for (const service of [app, db, migrate]) {
+    for (const service of [app, db, migrate, preflight]) {
       for (const volume of service.volumes ?? []) expect(volume).not.toMatch(/^[./~]/);
     }
   });

@@ -43,6 +43,12 @@ describe("server shell scripts", () => {
     expect(text.indexOf("flock -n 9")).toBeLessThan(text.indexOf("trap '"));
   });
 
+  it("hf preflight works out the newest encrypted backup's age on the server and passes it in", () => {
+    const hf = readFileSync("deploy/server/hf.sh", "utf8");
+    expect(hf).toContain('"$HF_HOME"/backups/*.dump.age');
+    expect(hf).toContain('docker compose run --rm preflight npm run preflight -- --backup-age-hours "$age"');
+  });
+
   it("env.sh names the production project, file and env file", () => {
     const env = readFileSync("deploy/server/env.sh", "utf8");
     expect(env).toContain("export COMPOSE_PROJECT_NAME=home-finances");

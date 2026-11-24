@@ -3,6 +3,7 @@ import {
   evaluatePreflight,
   hasFailures,
   newestBackupAgeHours,
+  parsePreflightArgs,
   readDatabaseFacts,
   type Level,
 } from "@/features/preflight/live-readiness";
@@ -13,6 +14,7 @@ import { getDb } from "@/lib/db";
  * A pre-flight checklist for the first real bank link.
  *
  *   docker compose exec app npm run preflight
+ *   ~/home-finances/hf preflight        (on the homelab server; see docs/homelab-deployment.md)
  *
  * Read-only: it changes nothing and contacts no one (not Plaid, not a bank). It
  * prints what it can verify from here and lists what only you can check. It works
@@ -23,6 +25,15 @@ import { getDb } from "@/lib/db";
 const MARK: Record<Level, string> = { PASS: "PASS  ", WARN: "WARN  ", FAIL: "FAIL  ", INFO: "info  ", MANUAL: "check " };
 
 async function main() {
+  let args: { backupAgeHours?: number };
+  try {
+    args = parsePreflightArgs(process.argv.slice(2));
+  } catch (error) {
+    console.log(error instanceof Error ? error.message : "Usage: npm run preflight");
+    process.exitCode = 1;
+    return;
+  }
+
   let config;
   try {
     config = getServerConfig();
@@ -42,8 +53,8 @@ async function main() {
       redirectUri: config.plaidRedirectUri,
       retiredKeyCount: config.tokenEncryption.retired.length,
       database: await readDatabaseFacts(db),
-      // The repository folder is mounted into the container, so ./backups is visible.
-      newestBackupAgeHours: await newestBackupAgeHours(path.resolve("backups")),
+      // On the server hf passes the age in; locally the repository's ./backups is mounted into the container.
+      newestBackupAgeHours: args.backupAgeHours ?? (await newestBackupAgeHours(path.resolve("backups"))),
     });
 
     console.log(`Pre-flight for ${config.plaidEnv === "production" ? "PRODUCTION (real banks)" : "Sandbox"}\n`);

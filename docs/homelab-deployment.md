@@ -156,6 +156,7 @@ for development.
 | Copy backups to this PC | `npm run backup:pull` |
 | See the app's logs | `ssh homelab home-finances/hf compose logs --tail 100 app` |
 | Back up right now | `ssh homelab home-finances/hf backup` |
+| Run the pre-flight checklist | `ssh homelab home-finances/hf preflight` |
 
 A deploy takes a backup first, runs migrations, starts the new app and waits for
 its health check. If the new app does not come up, the previous one is restarted.
@@ -213,11 +214,53 @@ ssh homelab "home-finances/hf compose stop app && home-finances/hf restore ~/hom
 
 The database you had stays as `home_finances_replaced_…` until you drop it.
 
+## Going live with a real bank
+
+Plaid production access is a deliberate, one-time switch. Do it in this order.
+
+**Ruling (2026-11-23): this server's database is the real-data database.** The
+general advice in [local-development.md](local-development.md#going-live-real-banks-a-deliberate-opt-in)
+to keep real data in a separate database is met here by removing the server's one
+Sandbox connection before switching (step 2); the pre-flight then finds no Sandbox
+data. The server also keeps its own `TOKEN_ENCRYPTION_KEY`: it was made on the
+server, and the only token it ever protected was a Sandbox one, already erased.
+
+1. **Deploy** the release that has attach (`npm run deploy`).
+2. **Remove the Sandbox connection** while the server is still on Sandbox (Sandbox
+   connections are hidden once it is on production): Connections → the
+   disconnected Sandbox bank → *Delete saved history…* → type `DELETE`. It needs
+   no Plaid credentials. Leftover Sandbox link attempts hold no token and are kept
+   for the record.
+3. **In the Plaid Dashboard (you):** production access is enabled for
+   Transactions, your bank shows as available on the OAuth institutions page, and
+   `https://<server>.<your-tailnet>.ts.net/plaid/oauth` is added to the allowed
+   redirect URIs.
+4. **Edit `prod.env` on the server (you)**, for example `ssh -t homelab nano home-finances/prod.env`.
+   Never paste these values anywhere else:
+
+   ```text
+   PLAID_ENV=production
+   PLAID_LIVE_OPT_IN=yes
+   PLAID_CLIENT_ID=<production client id>
+   PLAID_SECRET=<production secret>
+   PLAID_REDIRECT_URI=https://<server>.<your-tailnet>.ts.net/plaid/oauth
+   ```
+
+   Update the copy in your password manager.
+5. **Restart the app** so it reads them: `ssh homelab home-finances/hf compose up -d --wait app`
+   (Compose recreates the container when its settings changed). The app refuses to
+   start if `PLAID_ENV=production` is set without `PLAID_LIVE_OPT_IN=yes`.
+6. **Back up and run the checklist:** `ssh homelab home-finances/hf backup`, then
+   `ssh homelab home-finances/hf preflight`. It must report 0 failing. Go through
+   the "check" items yourself.
+7. **Link the bank** (Connections → *Connect a bank*), choosing every account you
+   want the first time. Then, for each account it brought in, *Use for…* the
+   hand-entered account it is, and *Attach*. *Sync now* on Transactions fetches the
+   transactions.
+8. **Back up again:** `ssh homelab home-finances/hf backup`.
+
 ## Not done yet
 
-- **Plaid (build step 6)** ships through `npm run deploy` like anything else. Real
-  banks will need `PLAID_REDIRECT_URI=https://<server>.<your-tailnet>.ts.net/plaid/oauth`
-  in `prod.env`, registered in the Plaid Dashboard.
 - **Content-Security-Policy** is still not set. That is acceptable while only your
   tailnet can reach the app; add and test one before any internet exposure.
 - The server user is in the `docker` group, which is equivalent to root on that

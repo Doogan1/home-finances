@@ -51,7 +51,7 @@ services:
       target: production
     image: home-finances:${RELEASE:?set by deploy/server/env.sh}
     restart: unless-stopped
-    environment:
+    environment: &app-env
       DATABASE_URL: ${DATABASE_URL:?missing from prod.env}
       APP_URL: ${APP_URL:?missing from prod.env}
       AUTH_SECRET: ${AUTH_SECRET:?missing from prod.env}
@@ -80,6 +80,20 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging: *logging
+
+  # One-off: ~/home-finances/hf preflight. The checklist for linking a real bank
+  # (scripts/preflight-live.mts), in the tools image, which has tsx, with the
+  # app's own settings, since it checks the app's database role. Read-only; it
+  # contacts no one.
+  preflight:
+    profiles: [ops]
+    image: home-finances-tools:${RELEASE:?set by deploy/server/env.sh}
+    command: ["npm", "run", "preflight"]
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
     logging: *logging
 
 volumes:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluatePreflight, hasFailures, type PreflightInput } from "@/features/preflight/live-readiness";
+import { evaluatePreflight, hasFailures, parsePreflightArgs, type PreflightInput } from "@/features/preflight/live-readiness";
 
 // The pre-flight checklist for the first real bank link. Pure rules over a
 // snapshot of facts, so every combination can be tested without a database.
@@ -152,5 +152,19 @@ describe("what it says", () => {
 
     expect(text).not.toContain("pw@");
     expect(text).not.toContain("x=secret");
+  });
+});
+
+describe("command-line arguments", () => {
+  it("takes the newest backup's age from outside, for the server, where backups are not in the container", () => {
+    expect(parsePreflightArgs([])).toEqual({});
+    expect(parsePreflightArgs(["--backup-age-hours", "3"])).toEqual({ backupAgeHours: 3 });
+    expect(parsePreflightArgs(["--backup-age-hours", "0"])).toEqual({ backupAgeHours: 0 });
+  });
+
+  it("refuses anything else", () => {
+    for (const argv of [["--backup-age-hours"], ["--backup-age-hours", "-1"], ["--backup-age-hours", "2.5"], ["--backup-age-hours", "x"], ["--other"]]) {
+      expect(() => parsePreflightArgs(argv), argv.join(" ")).toThrow(/^Usage:/);
+    }
   });
 });

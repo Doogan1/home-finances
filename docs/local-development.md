@@ -217,6 +217,13 @@ Nothing in this repository links a real bank unless you do all of this on
 purpose. It is never required for development or tests. Work through it in
 order; `npm run preflight` (below) checks the parts it can.
 
+> **Real data lives on the homelab server.** Go live there by following
+> [homelab-deployment.md, "Going live with a real bank"](homelab-deployment.md#going-live-with-a-real-bank).
+> Ruling (2026-11-23): the server's database already is the real-data database,
+> so step 3 below is met there by deleting its one Sandbox connection's saved
+> history before switching, and step 4 by keeping the server's own key, which only
+> ever protected a Sandbox token. The steps below are for a copy on this computer.
+
 1. **Know what your Plaid access allows.** On the Dashboard: Production (trial)
    access is enabled for Transactions; how many Items the trial gives you (Plaid's
    billing page says 10, and that **removing an Item does not free a slot**, so
@@ -251,7 +258,7 @@ order; `npm run preflight` (below) checks the parts it can.
    `PLAID_LIVE_OPT_IN=yes` is also set**, so a stray edit or a copied `.env`
    cannot switch it. The Connections page then shows a prominent "Production:
    real bank data" notice.
-6. **Run the checklist:** `docker compose exec app npm run preflight`. It is
+6. **Run the checklist:** `docker compose exec app npm run preflight` (on the server: `ssh homelab home-finances/hf preflight`). It is
    read-only and contacts no one. It checks what it can see (https, a matching
    redirect address, Sandbox data kept apart, a restricted database role, a recent
    backup, an unfinished key rotation, how many trial Items you have used) and lists

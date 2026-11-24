@@ -212,3 +212,16 @@ export async function newestBackupAgeHours(dir: string, now: Date = new Date()):
   }
   return newest === null ? null : (now.getTime() - newest) / 3_600_000;
 }
+
+const USAGE = "Usage: npm run preflight [-- --backup-age-hours <whole hours>]";
+
+/**
+ * `--backup-age-hours <n>` says how old the newest backup is. On the homelab
+ * server the backups are on the host, not in the container that runs this, so
+ * `hf preflight` works the age out there and passes it in.
+ */
+export function parsePreflightArgs(argv: readonly string[]): { backupAgeHours?: number } {
+  if (argv.length === 0) return {};
+  if (argv.length !== 2 || argv[0] !== "--backup-age-hours" || !/^\d{1,6}$/.test(argv[1])) throw new Error(USAGE);
+  return { backupAgeHours: Number(argv[1]) };
+}

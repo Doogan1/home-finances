@@ -56,3 +56,7 @@ export const timeZoneInput = z.strictObject({
   timeZone: z.string().max(64).refine(isTimeZone, "Not a time zone"),
 });
 export type TimeZoneInput = z.infer<typeof timeZoneInput>;
+
+/** Attach: the bank account to attach to the hand-entered account in the URL. */
+export const attachAccountInput = z.strictObject({ plaidAccountId: z.uuid() });
+export type AttachAccountInput = z.infer<typeof attachAccountInput>;

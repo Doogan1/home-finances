@@ -19,12 +19,20 @@ export type AccountErrorCode =
   | "archived"
   | "time_zone_required"
   | "future_date"
-  | "in_use";
+  | "in_use"
+  // Attaching a bank account (src/features/accounts/attach.ts):
+  | "already_linked"
+  | "bank_account_not_found"
+  | "not_plaid"
+  | "already_attached"
+  | "connection_disconnected"
+  | "kind_mismatch"
+  | "bank_account_in_use";
 
 export class AccountInputError extends Error {
   constructor(
     readonly code: AccountErrorCode,
-    // For "in_use": the rules that still use the account.
+    // For "in_use" and "bank_account_in_use": the rules that use the account.
     readonly ruleNames: readonly string[] = [],
   ) {
     super(code);

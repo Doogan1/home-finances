@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAccountInput, recordBalancesInput, timeZoneInput, updateAccountInput } from "@/features/accounts/input";
+import { attachAccountInput, createAccountInput, recordBalancesInput, timeZoneInput, updateAccountInput } from "@/features/accounts/input";
 
 const ID_A = "00000000-0000-4000-8000-00000000000a";
 const ID_B = "00000000-0000-4000-8000-00000000000b";
@@ -72,5 +72,14 @@ describe("timeZoneInput", () => {
   it("accepts only IANA names", () => {
     expect(timeZoneInput.safeParse({ timeZone: "America/New_York" }).success).toBe(true);
     expect(timeZoneInput.safeParse({ timeZone: "Eastern" }).success).toBe(false);
+  });
+});
+
+describe("attachAccountInput", () => {
+  it("takes exactly one bank account id", () => {
+    expect(attachAccountInput.parse({ plaidAccountId: ID_A })).toEqual({ plaidAccountId: ID_A });
+    for (const bad of [{}, { plaidAccountId: "nope" }, { plaidAccountId: ID_A, householdId: ID_B }, { accountId: ID_A }]) {
+      expect(attachAccountInput.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
   });
 });

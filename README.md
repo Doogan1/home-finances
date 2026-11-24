@@ -18,6 +18,13 @@ You can also add accounts by hand (Accounts → **Add an account**) and record t
 balances on one date (**Update balances**). Hand-entered balances are real financial
 data that exists nowhere else, so run `npm run backup` regularly from now on.
 
+**Attaching a bank.** Once a bank is connected, each of its accounts can be
+attached to the hand-entered account it really is (Connections → *Use for…*). The
+account keeps its name, bills, income and typed balances, and from then on gets
+its balances and transactions from the bank. Deleting the bank's saved history
+later gives it back to hand entry instead of deleting it. See
+[docs/plaid-link.md](docs/plaid-link.md#attaching-a-bank-account-to-one-entered-by-hand).
+
 **Bills and income.** Each bill or income stream is a rule that produces dates
 (every N weeks, every N months on a day, twice a month, or once; a day past the
 month's end means its last day). Occurrences are computed, never stored, so

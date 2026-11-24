@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { PlaidLinkButton } from "@/components/plaid-link";
+import { AttachAccount } from "@/components/attach-account";
 import { ConnectionActions } from "@/components/connection-actions";
+import { PlaidLinkButton } from "@/components/plaid-link";
+import { listAttachCandidates } from "@/features/accounts/attach";
+import { attachTargets } from "@/features/accounts/linking";
 import { getPlaidEnvironment, isPlaidConfigured } from "@/features/plaid/environment";
-import { describeConnection, formatTimestamp } from "@/features/plaid/format";
+import { describeConnection, formatTimestamp, maskAccount } from "@/features/plaid/format";
 import { listConnections } from "@/features/plaid/queries";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
@@ -28,7 +31,11 @@ export default function ConnectionsPage() {
 async function Connections() {
   const { householdId } = await requireHouseholdOrRedirect();
   const environment = getPlaidEnvironment();
-  const connections = await listConnections(getDb(), householdId, environment);
+  const db = getDb();
+  const [connections, candidates] = await Promise.all([
+    listConnections(db, householdId, environment),
+    listAttachCandidates(db, householdId),
+  ]);
   const plaidConfigured = isPlaidConfigured();
 
   return (
@@ -62,6 +69,8 @@ async function Connections() {
             const activeAccounts = connection.accounts.filter((account) => account.active).length;
             const savedAccounts = connection.accounts.length;
             const disconnected = connection.status === "DISCONNECTED";
+            const institutionName = connection.institutionName ?? "this bank";
+            const attachedNames = connection.accounts.filter((account) => account.attachedAt !== null).map((account) => account.name);
             return (
               <li key={connection.id} className="card">
                 <h2>
@@ -76,15 +85,46 @@ async function Connections() {
                 </p>
                 {view.advice && <p>{view.advice}</p>}
                 {savedAccounts > 0 && (
-                  <p>
-                    <Link href="/accounts">View accounts</Link>
-                  </p>
+                  <>
+                    <ul>
+                      {connection.accounts.map((account) => {
+                        if (account.attachedAt !== null) {
+                          return (
+                            <li key={account.id}>
+                              {maskAccount(account.mask)} attached to <strong>{account.name}</strong>
+                            </li>
+                          );
+                        }
+                        // A disconnected bank's accounts are history only: nothing to attach.
+                        const targets = disconnected ? [] : attachTargets(account.type, candidates);
+                        return (
+                          <li key={account.id}>
+                            {account.name}{" "}
+                            <span className="muted">
+                              {maskAccount(account.mask)} · {account.subtype ?? account.type}
+                            </span>
+                            {targets.length > 0 && (
+                              <AttachAccount
+                                bankAccount={{ id: account.id, label: `${account.name} ${maskAccount(account.mask)}` }}
+                                institutionName={institutionName}
+                                targets={targets.map(({ id, name }) => ({ id, name }))}
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p>
+                      <Link href="/accounts">View accounts</Link>
+                    </p>
+                  </>
                 )}
                 <ConnectionActions
                   connectionId={connection.id}
                   status={connection.status}
-                  institutionName={connection.institutionName ?? "this bank"}
-                  savedAccounts={savedAccounts}
+                  institutionName={institutionName}
+                  savedAccounts={savedAccounts - attachedNames.length}
+                  attachedNames={attachedNames}
                   plaidConfigured={plaidConfigured}
                 />
               </li>

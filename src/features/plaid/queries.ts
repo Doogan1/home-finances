@@ -14,9 +14,14 @@ export function listConnections(db: PrismaClient, householdId: string, environme
   return db.plaidItem.findMany({
     where: { householdId, environment },
     omit: { accessTokenCiphertext: true, syncCursor: true },
-    // Just the flags, so pages can count accounts the bank still reports versus
-    // accounts merely kept as history.
-    include: { accounts: { select: { active: true } } },
+    // The accounts, so pages can count those the bank still reports versus those
+    // merely kept as history, and offer to attach the ones not yet attached.
+    include: {
+      accounts: {
+        select: { id: true, name: true, mask: true, type: true, subtype: true, active: true, attachedAt: true },
+        orderBy: { name: "asc" },
+      },
+    },
     orderBy: { createdAt: "asc" },
   });
 }

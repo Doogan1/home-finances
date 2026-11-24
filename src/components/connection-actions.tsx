@@ -21,12 +21,14 @@ export function ConnectionActions({
   status,
   institutionName,
   savedAccounts,
+  attachedNames,
   plaidConfigured,
 }: {
   connectionId: string;
   status: Status;
   institutionName: string;
   savedAccounts: number;
+  attachedNames: string[];
   plaidConfigured: boolean;
 }) {
   const router = useRouter();
@@ -62,6 +64,13 @@ export function ConnectionActions({
               {savedAccounts} saved {savedAccounts === 1 ? "account" : "accounts"}, every balance recorded for them
               and any saved transactions. It cannot be undone. Your other connections are not affected.
             </p>
+            {attachedNames.length > 0 && (
+              <p>
+                {attachedNames.join(", ")} {attachedNames.length === 1 ? "goes" : "go"} back to being entered by hand:
+                the balances you typed, and the bills and income that use {attachedNames.length === 1 ? "it" : "them"}, are
+                kept; the balances and transactions from {institutionName} are deleted.
+              </p>
+            )}
             <label>
               Type <code>DELETE</code> to confirm{" "}
               <input value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" />
@@ -100,6 +109,12 @@ export function ConnectionActions({
             balances will be fetched and Plaid stops billing for it. Accounts and balances already saved stay in this
             app until you delete them. To use the bank again you would connect it as a new bank.
           </p>
+          {attachedNames.length > 0 && (
+            <p>
+              {attachedNames.join(", ")} {attachedNames.length === 1 ? "stays" : "stay"} in the forecast; enter{" "}
+              {attachedNames.length === 1 ? "its" : "their"} balances by hand from then on.
+            </p>
+          )}
           <button type="button" disabled={working} onClick={() => run(`/api/plaid/connections/${connectionId}/disconnect`, {})}>
             {working ? "Disconnecting…" : "Yes, disconnect"}
           </button>{" "}

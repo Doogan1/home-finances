@@ -128,6 +128,41 @@ test("deleting saved history needs its own typed confirmation", async ({ page })
   await expect(page.getByText("E2E Checking")).toBeVisible();
 });
 
+test("a bank account can be attached to an account entered by hand, after a plain-language confirmation", async ({ page }) => {
+  await signInViaApi(page);
+  await page.goto("/connections");
+  const created = await page.request.post("/api/accounts", {
+    headers: { origin: new URL(page.url()).origin },
+    data: { name: "E2E Attach Checking", kind: "checking", ownerLabel: "Shared" },
+  });
+  expect(created.status()).toBe(201);
+  await page.reload();
+
+  // No hand-entered card exists, so the bank's card has nothing to be used for.
+  await expect(card(page, "First Platypus Bank (E2E)").getByLabel("Use E2E Credit Card ••••3333 for")).toHaveCount(0);
+
+  const reauth = card(page, "E2E Needs Sign-in Bank");
+  await reauth.getByLabel("Use E2E Reauth Account ••••4444 for").selectOption({ label: "E2E Attach Checking" });
+  await reauth.getByRole("button", { name: "Attach…" }).click();
+  await expect(reauth.getByText(/keeps its name, owner, cushion, bills and income/)).toBeVisible();
+  await reauth.getByRole("button", { name: "Yes, attach" }).click();
+
+  await expect(reauth.getByText(/attached to E2E Attach Checking/)).toBeVisible();
+  await expect(reauth.getByRole("button", { name: "Attach…" })).toHaveCount(0);
+
+  await page.goto("/accounts");
+  const attached = card(page, "E2E Attach Checking");
+  await expect(attached.getByText(/attached to E2E Needs Sign-in Bank/)).toBeVisible();
+  await expect(attached.getByText("$50.00").first()).toBeVisible();
+  await expect(page.locator("li.card", { hasText: "E2E Reauth Account" })).toHaveCount(0);
+
+  const anonymous = await page.context().request.post(`/api/accounts/${crypto.randomUUID()}/attach`, {
+    headers: { origin: "https://evil.example" },
+    data: { plaidAccountId: crypto.randomUUID() },
+  });
+  expect(anonymous.status()).toBe(403);
+});
+
 test("lifecycle routes refuse anonymous, cross-site and malformed calls", async ({ page, request }) => {
   const id = crypto.randomUUID();
   for (const action of ["reconnect", "disconnect", "delete-history"]) {

@@ -134,7 +134,7 @@ and **Reconnect**.
 1. calls Plaid's `/item/remove`, which invalidates the access token and, per
    Plaid, is what ends billing for Transactions;
 2. erases the stored (encrypted) access token, marks the connection
-   **Disconnected**, and marks its accounts as no longer reported.
+   **Disconnected**, and marks its accounts as no longer reported (an attached account is the exception: it stays in the forecast and takes typed balances again, see below).
 
 Saved accounts, balance observations and any transactions are **kept**. They
 remain visible (marked "Disconnected · history kept") until you delete them.
@@ -159,7 +159,13 @@ A separate step, available only for a **disconnected** connection:
 balance recorded for them, any transactions), requires typing `DELETE`, and
 cannot be undone. The server re-checks that the connection is disconnected as
 part of the delete itself, and other connections are never touched. Link attempts
-that referred to it are kept (without the link) for the audit trail.
+that referred to it are kept (without the link) for the audit trail. It never
+calls Plaid, so it works without Plaid credentials.
+
+An **attached** account (below) is not deleted: its bank balances and
+transactions are, and it goes back to being entered by hand with the balances you
+typed and the bills and income that use it. All of this is one database
+transaction.
 
 ## OAuth banks and `PLAID_REDIRECT_URI`
 
@@ -217,6 +223,30 @@ again as a new connection is the wrong way: it uses another trial slot, and at P
 it invalidates the first connection. After it completes, the account list is
 re-fetched; accounts no longer shared appear as "Not reported by bank" with their
 history kept.
+
+## Attaching a bank account to one entered by hand
+
+Each connection's card on **Connections** lists the accounts it brought in. For
+one that is not attached yet, *Use for…* offers the hand-entered accounts it can
+become: not archived, not already linked, and the same kind (bank checking or
+savings to hand-entered checking or savings; a card to a card). *Attach…* says
+what will move; *Yes, attach* does it, in one database transaction:
+
+- The hand-entered account keeps its id, name, owner, cushion, forecast setting,
+  bills and income, and every balance you typed for it.
+- It takes over the bank account's link (so *Refresh accounts* and *Sync now*
+  update it from then on), its last digits, official name and subtype, and the
+  bank's saved balances and transactions.
+- The bank's own copy of the account is removed; the card shows
+  "••••1234 attached to <name>".
+
+It is refused for a disconnected bank's account, an archived or already linked
+account, different kinds, or a bank account a bill or income uses. A refresh never
+renames an attached account (rename it on Accounts). While the bank is connected
+its balances come from the bank, so Update balances shows it read-only; after
+**Disconnect** it stays in the forecast and takes typed balances again. Its latest
+balance is whichever is later by date (a typed balance's as-of date, or the day a
+bank balance was observed), the same rule the forecast uses.
 
 ## Not yet covered
 

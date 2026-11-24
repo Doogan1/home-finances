@@ -9,9 +9,9 @@ type Service = {
   ports?: string[];
   environment?: Record<string, string>;
   command?: string[];
-  volumes?: string[];
+  volumes?: unknown[];
 };
-const compose = parse(readFileSync("compose.prod.yaml", "utf8")) as { services: Record<string, Service> };
+const compose = parse(readFileSync("compose.prod.yaml", "utf8")) as { services: Record<string, Service>; volumes?: unknown };
 const { app, db, migrate, preflight } = compose.services;
 
 const APP_ENV = [
@@ -67,9 +67,21 @@ describe("compose.prod.yaml", () => {
     expect(JSON.stringify(preflight)).not.toMatch(/MIGRATION_DATABASE_URL|POSTGRES_|APP_DB_PASSWORD|env_file/);
   });
 
-  it("mounts no host folders, so SELinux labels never matter", () => {
-    for (const service of [app, db, migrate, preflight]) {
-      for (const volume of service.volumes ?? []) expect(volume).not.toMatch(/^[./~]/);
-    }
+  it("keeps the database files in the encrypted vault, and never creates the folder on demand", () => {
+    expect(db.volumes).toEqual([
+      {
+        type: "bind",
+        source: "${HF_VAULT:?set by deploy/server/env.sh}/pgdata",
+        target: "/var/lib/postgresql/data",
+        // A vault that is not mounted must stop the database, not leave it to
+        // write real data to an empty folder on the unencrypted disk.
+        bind: { create_host_path: false, selinux: "Z" },
+      },
+    ]);
+    expect(compose.volumes).toBeUndefined();
+  });
+
+  it("mounts no host folders into the other services", () => {
+    for (const service of [app, migrate, preflight]) expect(service.volumes).toBeUndefined();
   });
 });

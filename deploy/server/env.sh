@@ -7,6 +7,10 @@ export HF_HOME
 export COMPOSE_PROJECT_NAME=home-finances
 export COMPOSE_FILE=compose.prod.yaml
 export COMPOSE_ENV_FILES="$HF_HOME/prod.env"
+# The encrypted vault (LUKS, unlocked at boot by the TPM) that holds the database
+# files, prod.env and backups; compose.prod.yaml mounts $HF_VAULT/pgdata.
+HF_VAULT="${HF_VAULT:-/srv/hf-secure}"
+export HF_VAULT
 # Restores re-apply grants with the one-off migrate job (scripts/lib/backup.mjs).
 export HF_MIGRATE_SERVICE=migrate
 # The image tag: the release folder's name (12 hex characters of the commit).

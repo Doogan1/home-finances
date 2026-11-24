@@ -55,5 +55,8 @@ describe("server shell scripts", () => {
     expect(env).toContain("export COMPOSE_FILE=compose.prod.yaml");
     expect(env).toContain('export COMPOSE_ENV_FILES="$HF_HOME/prod.env"');
     expect(env).toContain("export HF_MIGRATE_SERVICE=migrate");
+    // compose.prod.yaml mounts the database from here and refuses without it.
+    expect(env).toContain('HF_VAULT="${HF_VAULT:-/srv/hf-secure}"');
+    expect(env).toContain("export HF_VAULT");
   });
 });

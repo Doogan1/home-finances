@@ -15,10 +15,10 @@ On the server, everything lives in `~/home-finances/`:
 
 | Path | What |
 |---|---|
-| `prod.env` | all secrets (mode 600). **Keep a copy in your password manager.** |
+| `prod.env` | all secrets (mode 600), a link into the encrypted vault (`/srv/hf-secure`, step 3b). **Keep a copy in your password manager.** |
 | `releases/<id>/` | one folder per deployed commit (the 3 newest are kept) |
 | `current`, `previous` | links to the running and the previous release |
-| `backups/*.dump.age` | encrypted nightly backups |
+| `backups/*.dump.age` | encrypted nightly backups, also a link into the vault |
 | `age-recipient.txt` | the public half of the backup key |
 | `hf` | everyday helper (see below) |
 
@@ -79,6 +79,68 @@ In the Tailscale admin console (DNS page), turn on **MagicDNS** and **HTTPS
 Certificates**. Install Tailscale on the PC and on each phone that should reach the
 app, and sign in to the same tailnet. Note the server's name, shown as
 `<server>.<your-tailnet>.ts.net`.
+
+### 3b. The encrypted vault (you)
+
+The server's disk is not encrypted, so the database files, `prod.env` and the
+backups live in a 20 GB LUKS2 container file, `/srv/hf-vault.img`, mounted at
+`/srv/hf-secure`. The TPM unlocks it at boot, but only on this machine and only
+while Secure Boot is intact (PCR 7). A drive that is taken out or thrown away
+reads as noise. A stolen *whole computer* still boots and unlocks: this protects
+the disk, not the box. `compose.prod.yaml` mounts `/srv/hf-secure/pgdata` and
+never creates it, so if the vault is not unlocked the database refuses to start
+rather than writing to the plain disk. Home Assistant and the rest of the server
+are not affected.
+
+On the server (`ssh -t homelab`), one command at a time:
+
+```sh
+sudo fallocate -l 20G /srv/hf-vault.img && sudo chmod 600 /srv/hf-vault.img
+sudo cryptsetup luksFormat --type luks2 /srv/hf-vault.img
+```
+
+`luksFormat` asks you to type `YES`, then a passphrase twice. That passphrase is
+the **recovery key**: it opens the vault if the TPM ever refuses (a firmware
+update, Secure Boot turned off, the disk moved to another machine). Save it in the
+same place as `prod.env`. Then let the TPM unlock it, and unlock it at boot:
+
+```sh
+LOOP=$(sudo losetup --show -f /srv/hf-vault.img)
+sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 "$LOOP"
+sudo losetup -d "$LOOP"
+echo 'hfvault /srv/hf-vault.img none tpm2-device=auto,nofail' | sudo tee -a /etc/crypttab
+echo '/dev/mapper/hfvault /srv/hf-secure xfs defaults,nofail,x-systemd.before=docker.service 0 0' | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload
+sudo systemctl start systemd-cryptsetup@hfvault.service
+sudo mkfs.xfs /dev/mapper/hfvault
+sudo mkdir -p /srv/hf-secure && sudo mount /srv/hf-secure && sudo restorecon -R /srv/hf-secure
+sudo chown "$USER": /srv/hf-secure && chmod 700 /srv/hf-secure
+mkdir /srv/hf-secure/pgdata
+```
+
+`systemd-cryptenroll` asks for the passphrase you just chose. On a new server, go
+on to step 4 and, before the first deploy, link `prod.env` and `backups` into the
+vault: `ln -s /srv/hf-secure/prod.env ~/home-finances/prod.env` and
+`mkdir /srv/hf-secure/backups && ln -s /srv/hf-secure/backups ~/home-finances/backups`
+(setup-env then writes through the link).
+
+**Moving an existing install into the vault (once).** From the PC, after the
+commands above. A backup first, then the database stops while its files are
+copied, then `prod.env` and the backups move and are linked back:
+
+```powershell
+ssh homelab "home-finances/hf backup"
+ssh homelab "home-finances/hf compose stop app db"
+ssh homelab "docker run --rm -v home-finances_db-data:/from:ro -v /srv/hf-secure/pgdata:/to:Z postgres:17 sh -c 'cp -a /from/. /to/ && chown 999:999 /to && chmod 700 /to'"
+ssh homelab "cd home-finances && mv prod.env /srv/hf-secure/ && ln -s /srv/hf-secure/prod.env prod.env && mv backups /srv/hf-secure/ && ln -s /srv/hf-secure/backups backups"
+npm run deploy
+```
+
+The deploy brings the database up from the vault, backs it up and checks it. When
+the app works, reboot once (`ssh -t homelab sudo systemctl reboot`) and check it
+comes back on its own. Only then remove the old, unencrypted copy:
+`ssh homelab "docker volume rm home-finances_db-data"`, then
+`ssh -t homelab sudo fstrim -v /`.
 
 ### 4. The backup key (PC)
 

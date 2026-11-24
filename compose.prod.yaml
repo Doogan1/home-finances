@@ -6,7 +6,11 @@
 # Every value comes from ~/home-finances/prod.env by interpolation, and each
 # service receives only the variables it needs. In particular the app never sees
 # the owner credentials: migrations run in the separate one-off `migrate` job.
-# Nothing mounts a host folder, so SELinux labels never come into it.
+# The only host folder mounted is the database's, inside the encrypted vault
+# (HF_VAULT, set in deploy/server/env.sh; see "The encrypted vault" in
+# docs/homelab-deployment.md). It is never created on demand: if the vault is not
+# unlocked and mounted, the database refuses to start instead of writing real data
+# to the unencrypted disk.
 
 services:
   db:
@@ -17,7 +21,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing from prod.env}
       POSTGRES_DB: ${POSTGRES_DB:?missing from prod.env}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - type: bind
+        source: ${HF_VAULT:?set by deploy/server/env.sh}/pgdata
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+          # SELinux is enforcing on the server: relabel for this container only.
+          selinux: Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -95,6 +105,3 @@ services:
       db:
         condition: service_healthy
     logging: *logging
-
-volumes:
-  db-data:

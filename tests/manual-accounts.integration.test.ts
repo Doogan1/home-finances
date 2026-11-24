@@ -233,5 +233,11 @@ describe("the account service", () => {
     await snapshot({ observedAt: "2026-11-14T19:00:00Z", asOfDate: "2026-11-14", current: "789", source: "MANUAL" });
     expect(await latest()).toMatchObject({ source: "MANUAL" });
     expect((await latest())?.current?.toFixed()).toBe("789");
+
+    // A newer bank snapshot that reported no balance is ignored, as in the forecast.
+    await owner.balanceSnapshot.create({
+      data: { accountId: attached.id, observedAt: new Date("2026-11-16T12:00:00Z"), current: null, currency: "USD", source: "ACCOUNTS_GET" },
+    });
+    expect((await latest())?.current?.toFixed()).toBe("789");
   });
 });

@@ -10,7 +10,7 @@ import {
 } from "@/features/accounts/manual";
 import { recordBalancesInput } from "@/features/accounts/input";
 import { listAccountsWithLatestBalance } from "@/features/plaid/queries";
-import { seedConnection, seedPerson } from "./helpers/plaid-fixtures";
+import { seedAttached, seedConnection, seedPerson } from "./helpers/plaid-fixtures";
 import { createTestClient, truncateAll } from "./helpers/test-db";
 
 const { ownerUrl, appUrl } = inject("testDatabase");
@@ -46,6 +46,23 @@ describe("database rules for hand-entered accounts", () => {
 
   it("refuses half a Plaid link", async () => {
     await expect(manualAccount({ externalAccountId: "acc_1" })).rejects.toThrow(/Account_plaid_link_complete/);
+  });
+
+  it("allows an attached date only on an account with a Plaid link", async () => {
+    await expect(manualAccount({ attachedAt: new Date() })).rejects.toThrow(/Account_attached_is_linked/);
+
+    const item = await seedConnection(owner, householdId);
+    const attached = await seedAttached(owner, householdId, item.id);
+    expect(attached.attachedAt).not.toBeNull();
+
+    // Detaching clears the link and the date in one update.
+    await app.account.update({
+      where: { id: attached.id },
+      data: { plaidItemId: null, externalAccountId: null, attachedAt: null },
+    });
+    await expect(app.account.update({ where: { id: attached.id }, data: { attachedAt: new Date() } })).rejects.toThrow(
+      /Account_attached_is_linked/,
+    );
   });
 
   it("refuses a negative cushion", async () => {

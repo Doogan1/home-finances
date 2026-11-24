@@ -94,3 +94,28 @@ export function databaseFailingOnTransactions(app: PrismaClient): PrismaClient {
     },
   });
 }
+
+/**
+ * A hand-entered account attached to a connection, as attachBankAccount leaves
+ * it (it carries the bank account's Plaid key), written directly so tests can
+ * set one up without going through attach.
+ */
+export async function seedAttached(
+  owner: PrismaClient,
+  householdId: string,
+  plaidItemId: string,
+  data: { name?: string; externalAccountId?: string; type?: string; subtype?: string | null } = {},
+) {
+  return owner.account.create({
+    data: {
+      householdId,
+      plaidItemId,
+      externalAccountId: data.externalAccountId ?? "acct_attached",
+      name: data.name ?? "Ally Spend",
+      type: data.type ?? "depository",
+      subtype: data.subtype === undefined ? "checking" : data.subtype,
+      currency: "USD",
+      attachedAt: new Date("2026-11-20T12:00:00Z"),
+    },
+  });
+}

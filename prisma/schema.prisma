@@ -228,6 +228,11 @@ model Account {
   archivedAt        DateTime?
   // The workbook's Account ID (ASPEND, ...) for imported accounts; set only by the import.
   importRef         String?
+  // Set when an account from a connected bank was attached to this hand-entered
+  // one (build step 6): it keeps its own name, rules and typed balances, and its
+  // two Plaid fields carry the bank account's key. Cleared with them when the
+  // connection's saved history is deleted. A check requires the Plaid link.
+  attachedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

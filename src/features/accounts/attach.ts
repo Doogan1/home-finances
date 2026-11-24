@@ -69,6 +69,7 @@ export async function attachBankAccount(
     if (bank.plaidItem.environment !== options.environment) throw new AccountInputError("bank_account_not_found");
     if (bank.attachedAt !== null) throw new AccountInputError("already_attached");
     if (bank.plaidItem.status === "DISCONNECTED") throw new AccountInputError("connection_disconnected");
+    if (!bank.active) throw new AccountInputError("not_reported");
     const kind = attachKind(target.type);
     if (kind === null || attachKind(bank.type) !== kind) throw new AccountInputError("kind_mismatch");
 

@@ -166,7 +166,11 @@ additive, so the previous app normally runs fine on the newer schema. If a
 release ever needs its database change undone, restore the backup taken just
 before it (below). Rollback starts the previous release's own compose file, so if a
 release ever changes the `db` service (for example the PostgreSQL version), do not
-roll back past it.
+roll back past it. Likewise, once an account is attached to a bank account, do not
+roll back to a release older than the one that added attaching: an older app treats
+attached accounts as bank-only (a refresh renames them, their bills become
+uneditable, and *Delete saved history* deletes them along with their typed
+balances). Restore the pre-deploy backup instead.
 
 If the connection drops or a deploy is interrupted, run `npm run deploy` again (it
 is safe to repeat). If the app is down meanwhile,
@@ -257,6 +261,9 @@ server, and the only token it ever protected was a Sandbox one, already erased.
    want the first time. Then, for each account it brought in, *Use for…* the
    hand-entered account it is, and *Attach*. *Sync now* on Transactions fetches the
    transactions.
+   From here on, do not roll back to a release older than the one that added
+   attaching (see "Rollback undoes the app, not the database"); restore the
+   pre-deploy backup instead.
 8. **Back up again:** `ssh homelab home-finances/hf backup`.
 
 ## Not done yet

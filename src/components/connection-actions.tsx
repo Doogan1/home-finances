@@ -60,8 +60,10 @@ export function ConnectionActions({
         {panel === "delete" ? (
           <div className="confirm">
             <p>
-              <strong>Delete saved history for {institutionName}?</strong> This permanently removes its{" "}
-              {savedAccounts} saved {savedAccounts === 1 ? "account" : "accounts"}, every balance recorded for them
+              <strong>Delete saved history for {institutionName}?</strong> This permanently removes{" "}
+              {savedAccounts > 0
+                ? `its ${savedAccounts} saved ${savedAccounts === 1 ? "account" : "accounts"}, every balance recorded for them`
+                : "every balance recorded for its accounts"}{" "}
               and any saved transactions. It cannot be undone. Your other connections are not affected.
             </p>
             {attachedNames.length > 0 && (

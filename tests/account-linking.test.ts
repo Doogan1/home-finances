@@ -38,16 +38,16 @@ describe("attachTargets", () => {
     ...patch,
   });
   const candidates = [
-    candidate("Ally Savings", "depository"),
-    candidate("Ally Spend", "depository"),
-    candidate("Amex", "credit"),
+    candidate("Test Savings", "depository"),
+    candidate("Test Spend", "depository"),
+    candidate("Card A", "credit"),
     candidate("Old checking", "depository", { archivedAt: at }),
     candidate("Linked", "depository", { plaidItemId: "item-2" }),
   ];
 
   it("offers open, unlinked accounts of the same kind, in the order given", () => {
-    expect(attachTargets("depository", candidates).map((c) => c.id)).toEqual(["Ally Savings", "Ally Spend"]);
-    expect(attachTargets("credit", candidates).map((c) => c.id)).toEqual(["Amex"]);
+    expect(attachTargets("depository", candidates).map((c) => c.id)).toEqual(["Test Savings", "Test Spend"]);
+    expect(attachTargets("credit", candidates).map((c) => c.id)).toEqual(["Card A"]);
     expect(attachTargets("loan", candidates)).toEqual([]);
   });
 });

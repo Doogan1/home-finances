@@ -187,8 +187,8 @@ describe("hand-entered account routes", () => {
 describe("POST /api/accounts/[id]/attach", () => {
   it("attaches a bank account, refusing bad bodies, other households and different kinds", async () => {
     const a = await signIn("a@example.test");
-    const { id: spend } = (await (await createAccount(post({ name: "Ally Spend", kind: "checking" }))).json()) as { id: string };
-    const { id: card } = (await (await createAccount(post({ name: "Amex", kind: "credit_card" }))).json()) as { id: string };
+    const { id: spend } = (await (await createAccount(post({ name: "Test Spend", kind: "checking" }))).json()) as { id: string };
+    const { id: card } = (await (await createAccount(post({ name: "Card A", kind: "credit_card" }))).json()) as { id: string };
     const item = await seedConnection(owner, a.householdId);
     const [checking, savings] = await owner.account.findMany({ where: { plaidItemId: item.id }, orderBy: { externalAccountId: "asc" } });
 
@@ -211,7 +211,7 @@ describe("POST /api/accounts/[id]/attach", () => {
 
   it("names the rules that use the bank account", async () => {
     const a = await signIn("a@example.test");
-    const { id: spend } = (await (await createAccount(post({ name: "Ally Spend", kind: "checking" }))).json()) as { id: string };
+    const { id: spend } = (await (await createAccount(post({ name: "Test Spend", kind: "checking" }))).json()) as { id: string };
     const item = await seedConnection(owner, a.householdId);
     const checking = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id } });
     const start = new Date("2026-12-01T00:00:00Z");

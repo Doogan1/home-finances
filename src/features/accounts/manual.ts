@@ -27,6 +27,7 @@ export type AccountErrorCode =
   | "already_attached"
   | "connection_disconnected"
   | "kind_mismatch"
+  | "not_reported"
   | "bank_account_in_use";
 
 export class AccountInputError extends Error {
@@ -110,7 +111,15 @@ export async function archiveManualAccount(db: PrismaClient, householdId: string
   if (users.length > 0) throw new AccountInputError("in_use", users.map((rule) => rule.name));
 
   // Guarded so archiving twice keeps the first date.
-  await db.account.updateMany({ where: { id: account.id, archivedAt: null }, data: { archivedAt: new Date() } });
+  // plaidItemId: null keeps this from racing an attach that links the account after the check above.
+  const archived = await db.account.updateMany({
+    where: { id: account.id, archivedAt: null, plaidItemId: null },
+    data: { archivedAt: new Date() },
+  });
+  if (archived.count === 0) {
+    const current = await findOwned(db, householdId, accountId);
+    if (current.plaidItemId !== null) throw new AccountInputError("not_manual");
+  }
 }
 
 export async function setHouseholdTimeZone(db: PrismaClient, householdId: string, timeZone: string) {

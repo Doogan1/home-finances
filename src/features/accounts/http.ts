@@ -14,6 +14,7 @@ const MAPPED: Record<AccountErrorCode, { status: number; message: string }> = {
   not_plaid: { status: 409, message: "That account was entered by hand, not brought in from a bank." },
   already_attached: { status: 409, message: "That account already has a bank account attached." },
   connection_disconnected: { status: 409, message: "That bank is disconnected, so its accounts can't be attached." },
+  not_reported: { status: 409, message: "The bank no longer reports this account, so it can't be attached." },
   kind_mismatch: {
     status: 409,
     message: "Those are different kinds of account. Attach checking or savings to checking or savings, and a card to a card.",

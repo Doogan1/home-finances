@@ -5,7 +5,7 @@ import { recordBalancesInput } from "@/features/accounts/input";
 import { AccountInputError, archiveManualAccount, createManualAccount, recordBalances, setHouseholdTimeZone } from "@/features/accounts/manual";
 import { loadForecastInput } from "@/features/forecast/queries";
 import { refreshItemAccounts } from "@/features/plaid/accounts";
-import { disconnectConnection } from "@/features/plaid/lifecycle";
+import { deleteConnectionHistory, disconnectConnection } from "@/features/plaid/lifecycle";
 import { syncItem } from "@/features/plaid/sync";
 import { createRuleInput } from "@/features/rules/input";
 import { createRule } from "@/features/rules/service";
@@ -47,7 +47,7 @@ beforeEach(async () => {
   item = await seedConnection(owner, householdId);
   checking = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, externalAccountId: CHECKING } });
   savings = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, externalAccountId: SAVINGS } });
-  spend = (await createManualAccount(app, householdId, { name: "Ally Spend", kind: "checking", ownerLabel: "Shared", cushion: "500" })).id;
+  spend = (await createManualAccount(app, householdId, { name: "Test Spend", kind: "checking", ownerLabel: "Shared", cushion: "500" })).id;
   await recordBalances(
     app,
     householdId,
@@ -92,7 +92,7 @@ describe("attachBankAccount", () => {
     expect(result).toEqual({ accountId: spend, movedTransactions: 1, movedBalances: 1 });
     const after = await owner.account.findUniqueOrThrow({ where: { id: spend } });
     expect(after).toMatchObject({
-      name: "Ally Spend",
+      name: "Test Spend",
       ownerLabel: "Shared",
       includeInForecast: true,
       plaidItemId: item.id,
@@ -130,7 +130,7 @@ describe("attachBankAccount", () => {
 
     expect(await owner.account.count({ where: { plaidItemId: item.id } })).toBe(2);
     const after = await owner.account.findUniqueOrThrow({ where: { id: spend } });
-    expect([after.name, after.mask]).toEqual(["Ally Spend", "0000"]);
+    expect([after.name, after.mask]).toEqual(["Test Spend", "0000"]);
     expect(await owner.transaction.count({ where: { accountId: spend } })).toBe(2);
     expect(await owner.balanceSnapshot.count({ where: { accountId: spend, source: "ACCOUNTS_GET" } })).toBe(2);
   });
@@ -142,7 +142,7 @@ describe("attachBankAccount", () => {
     const theirBank = await owner.account.findFirstOrThrow({ where: { plaidItemId: theirItem.id } });
     const archived = await createManualAccount(app, householdId, { name: "Old checking", kind: "checking", ownerLabel: null, cushion: null });
     await archiveManualAccount(app, householdId, archived.id);
-    const card = await createManualAccount(app, householdId, { name: "Amex", kind: "credit_card", ownerLabel: null, cushion: null });
+    const card = await createManualAccount(app, householdId, { name: "Card A", kind: "credit_card", ownerLabel: null, cushion: null });
     const closed = await seedConnection(owner, householdId, { plaidItemId: "item_closed", status: "DISCONNECTED", token: null });
     const closedBank = await owner.account.findFirstOrThrow({ where: { plaidItemId: closed.id } });
     const live = await owner.plaidItem.create({
@@ -150,6 +150,9 @@ describe("attachBankAccount", () => {
     });
     const liveBank = await owner.account.create({
       data: { householdId, plaidItemId: live.id, externalAccountId: "acct_live", name: "Live checking", type: "depository", currency: "USD" },
+    });
+    const silent = await owner.account.create({
+      data: { householdId, plaidItemId: item.id, externalAccountId: "acct_silent", name: "Silent checking", type: "depository", currency: "USD", active: false },
     });
     // A rule that points straight at a bank-only account (the rules service no longer allows it; old data could).
     const start = new Date("2026-12-01T00:00:00Z");
@@ -182,6 +185,7 @@ describe("attachBankAccount", () => {
       [spend, liveBank.id, "bank_account_not_found"],
       [spend, card.id, "not_plaid"],
       [spend, closedBank.id, "connection_disconnected"],
+      [spend, silent.id, "not_reported"],
       [card.id, checking.id, "kind_mismatch"],
       [spend, savings.id, "bank_account_in_use"],
     ];
@@ -193,14 +197,45 @@ describe("attachBankAccount", () => {
 
     // Once attached, the hand-entered account cannot itself be attached to another.
     await attach(spend, checking.id);
-    const pnc = await createManualAccount(app, householdId, { name: "PNC", kind: "checking", ownerLabel: null, cushion: null });
-    await expectCode(attach(pnc.id, spend), "already_attached");
+    const second = await createManualAccount(app, householdId, { name: "Test Checking B", kind: "checking", ownerLabel: null, cushion: null });
+    await expectCode(attach(second.id, spend), "already_attached");
+  });
+
+  it("keeps the account, its rule and its typed balances through attach, disconnect, delete history and a second attach", async () => {
+    await createRule(app, householdId, bill(spend));
+    await attach(spend, checking.id);
+    await disconnectConnection(deps(), householdId, item.id);
+    await recordBalances(
+      app,
+      householdId,
+      recordBalancesInput.parse({ asOfDate: "2026-11-20", entries: [{ accountId: spend, balance: "275" }] }),
+      NOW,
+    );
+    await expect(deleteConnectionHistory(deps(), householdId, item.id)).resolves.toEqual({ detached: 1 });
+    expect(await owner.account.findUniqueOrThrow({ where: { id: spend } })).toMatchObject({ plaidItemId: null, attachedAt: null });
+
+    const itemB = await seedConnection(owner, householdId, { plaidItemId: "item_b" });
+    const checkingB = await owner.account.findFirstOrThrow({ where: { plaidItemId: itemB.id, externalAccountId: "item_b_checking" } });
+    await attach(spend, checkingB.id);
+
+    const after = await owner.account.findUniqueOrThrow({ where: { id: spend } });
+    expect(after).toMatchObject({ name: "Test Spend", plaidItemId: itemB.id, externalAccountId: "item_b_checking" });
+    expect(after.attachedAt).toEqual(NOW);
+    expect(await owner.allocation.count({ where: { accountId: spend } })).toBe(1);
+    expect(await owner.rule.count({ where: { householdId, name: "Synthetic rent" } })).toBe(1);
+    const manual = await owner.balanceSnapshot.findMany({ where: { accountId: spend, source: "MANUAL" }, orderBy: { asOfDate: "asc" } });
+    expect(manual.map((s) => s.current?.toFixed())).toEqual(["321", "275"]);
+    // Connection A's bank-only rows went with its history.
+    expect(await owner.plaidItem.count({ where: { id: item.id } })).toBe(0);
+    expect(await owner.account.findUnique({ where: { id: checking.id } })).toBeNull();
+    expect(await owner.account.findUnique({ where: { id: savings.id } })).toBeNull();
+    expect(await owner.account.count({ where: { plaidItemId: item.id } })).toBe(0);
   });
 
   it("lets only one of two simultaneous attaches of the same bank account through", async () => {
-    const pnc = await createManualAccount(app, householdId, { name: "PNC", kind: "checking", ownerLabel: null, cushion: null });
+    const second = await createManualAccount(app, householdId, { name: "Test Checking B", kind: "checking", ownerLabel: null, cushion: null });
 
-    const results = await Promise.allSettled([attach(spend, checking.id), attach(pnc.id, checking.id)]);
+    const results = await Promise.allSettled([attach(spend, checking.id), attach(second.id, checking.id)]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const refused = results.find((r) => r.status === "rejected");
@@ -218,7 +253,7 @@ describe("attachBankAccount", () => {
       const input = await loadForecastInput(app, householdId, { environment: "SANDBOX", timeZone: NY, today: "2026-11-20" });
       return { account: input.accounts.find((a) => a.id === spend), snapshot: input.snapshots.get(spend) };
     };
-    expect(await forecastOf()).toMatchObject({ account: { name: "Ally Spend", active: true }, snapshot: { date: "2026-11-19", balance: "250" } });
+    expect(await forecastOf()).toMatchObject({ account: { name: "Test Spend", active: true }, snapshot: { date: "2026-11-19", balance: "250" } });
 
     await disconnectConnection(deps(), householdId, item.id);
     await recordBalances(

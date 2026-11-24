@@ -24,8 +24,11 @@ case "$command" in
     # The backups are on this machine, not in the container, so their age is worked out here.
     newest="$(ls -1t "$HF_HOME"/backups/*.dump.age 2>/dev/null | head -n 1 || true)"
     if [ -n "$newest" ]; then
-      age=$(( ($(date +%s) - $(stat -c %Y "$newest")) / 3600 ))
-      exec docker compose run --rm preflight npm run preflight -- --backup-age-hours "$age"
+      if modified="$(stat -c %Y "$newest" 2>/dev/null)"; then
+        age=$(( ($(date +%s) - modified) / 3600 ))
+        [ "$age" -ge 0 ] || age=0
+        exec docker compose run --rm preflight npm run preflight -- --backup-age-hours "$age"
+      fi
     fi
     exec docker compose run --rm preflight npm run preflight
     ;;

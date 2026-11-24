@@ -95,8 +95,8 @@ async function Connections() {
                             </li>
                           );
                         }
-                        // A disconnected bank's accounts are history only: nothing to attach.
-                        const targets = disconnected ? [] : attachTargets(account.type, candidates);
+                        // A disconnected bank's accounts are history only, and one the bank stopped reporting cannot be attached: nothing to offer.
+                        const targets = disconnected || !account.active ? [] : attachTargets(account.type, candidates);
                         return (
                           <li key={account.id}>
                             {account.name}{" "}

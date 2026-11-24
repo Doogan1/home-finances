@@ -111,7 +111,7 @@ export async function seedAttached(
       householdId,
       plaidItemId,
       externalAccountId: data.externalAccountId ?? "acct_attached",
-      name: data.name ?? "Ally Spend",
+      name: data.name ?? "Test Spend",
       type: data.type ?? "depository",
       subtype: data.subtype === undefined ? "checking" : data.subtype,
       currency: "USD",

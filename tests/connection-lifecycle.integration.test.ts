@@ -486,7 +486,7 @@ describe("accounts attached to hand-entered ones", () => {
     await refreshItemAccounts(deps(), person.householdId, item.id);
 
     const after = await owner.account.findUniqueOrThrow({ where: { id: attached.id } });
-    expect([after.name, after.mask, after.active]).toEqual(["Ally Spend", "0000", true]);
+    expect([after.name, after.mask, after.active]).toEqual(["Test Spend", "0000", true]);
     expect(await owner.balanceSnapshot.count({ where: { accountId: attached.id, source: "ACCOUNTS_GET" } })).toBe(1);
     const bankOnly = await owner.account.findFirstOrThrow({ where: { plaidItemId: item.id, attachedAt: null } });
     expect(bankOnly.name).toBe("Plaid Saving");
@@ -558,7 +558,7 @@ describe("accounts attached to hand-entered ones", () => {
 
     expect(await owner.plaidItem.count()).toBe(0);
     expect(await owner.account.findUniqueOrThrow({ where: { id: attached.id } })).toMatchObject({
-      name: "Ally Spend",
+      name: "Test Spend",
       plaidItemId: null,
       externalAccountId: null,
       attachedAt: null,

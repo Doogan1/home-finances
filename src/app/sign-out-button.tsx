@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { NavIcon } from "@/components/nav-icons";
 import { authClient } from "@/lib/auth/client";
 
 export function SignOutButton() {
@@ -18,7 +19,8 @@ export function SignOutButton() {
   }
 
   return (
-    <button type="button" onClick={signOut} disabled={pending}>
+    <button type="button" className="nav-link" onClick={signOut} disabled={pending}>
+      <NavIcon name="signOut" />
       {pending ? "Signing out…" : "Sign out"}
     </button>
   );

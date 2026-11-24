@@ -30,7 +30,9 @@ export function NeedsAttention({ attention }: { attention: Attention }) {
         </li>
       ))}
       {attention.low.map((low) => (
-        <li key={`low-${low.account.id}`}>{describeLow(low)}</li>
+        <li key={`low-${low.account.id}`} className={low.firstBelowZero ? "attention-low attention-negative" : "attention-low"}>
+          {describeLow(low)}
+        </li>
       ))}
       {attention.estimates.length > 0 && (
         <li key="estimates">

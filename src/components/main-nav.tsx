@@ -1,25 +1,15 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { NavShell, NavWithPath } from "./nav-shell";
 
-/** The spec's navigation. Static: it knows nothing about the session or the path. */
-const LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/register", label: "Register" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/bills", label: "Bills & income" },
-  { href: "/accounts", label: "Accounts" },
-  { href: "/connections", label: "Connections" },
-] as const;
-
+/**
+ * The bottom bar on phones and the sidebar on wide screens: one list, laid out
+ * by CSS. It knows nothing about the session. Reading the path suspends on
+ * routes with dynamic parameters, so the same links show unmarked until then.
+ */
 export function MainNav() {
   return (
-    <nav aria-label="Main" className="main-nav">
-      <ul>
-        {LINKS.map((link) => (
-          <li key={link.href}>
-            <Link href={link.href}>{link.label}</Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <Suspense fallback={<NavShell pathname={null} />}>
+      <NavWithPath />
+    </Suspense>
   );
 }

@@ -23,9 +23,6 @@ export const metadata: Metadata = { title: "Accounts · Home Finances" };
 export default function AccountsPage() {
   return (
     <main>
-      <p>
-        <Link href="/">← Home</Link>
-      </p>
       <h1>Accounts</h1>
       <Suspense fallback={<p className="muted">Loading…</p>}>
         <Accounts />
@@ -50,25 +47,29 @@ async function Accounts() {
   const now = new Date();
   const today = household.timeZone ? todayIn(household.timeZone, now) : null;
 
+  const timeZone = (
+    <section className="notice">
+      {household.timeZone ? (
+        <p>
+          Time zone: {household.timeZone} · <Link href="/accounts/balances">Update balances</Link>
+        </p>
+      ) : (
+        <p>Choose your household&apos;s time zone. It decides what &quot;today&quot; is for balances and the forecast.</p>
+      )}
+      <TimeZoneForm current={household.timeZone} zones={Intl.supportedValuesOf("timeZone")} />
+    </section>
+  );
+
   return (
     <>
-      <section className="notice">
-        {household.timeZone ? (
-          <p>
-            Time zone: {household.timeZone} · <Link href="/accounts/balances">Update balances</Link>
-          </p>
-        ) : (
-          <p>Choose your household&apos;s time zone. It decides what &quot;today&quot; is for balances and the forecast.</p>
-        )}
-        <TimeZoneForm current={household.timeZone} zones={Intl.supportedValuesOf("timeZone")} />
-      </section>
+      {!household.timeZone && timeZone}
       <NewAccountForm />
       {accounts.length === 0 ? (
         <p className="muted">
           No accounts yet. Add one by hand, or <Link href="/connections">connect a bank</Link>.
         </p>
       ) : (
-        <ul className="cards">
+        <ul className="cards cards-wide">
           {accounts.map((account) => {
             const balance = account.balance;
             const labels = balanceLabels(account.type);
@@ -162,6 +163,7 @@ async function Accounts() {
           })}
         </ul>
       )}
+      {household.timeZone && timeZone}
     </>
   );
 }

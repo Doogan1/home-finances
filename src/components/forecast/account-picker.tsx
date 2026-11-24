@@ -13,12 +13,14 @@ export function AccountPicker({
 }) {
   if (charted.length < 2) return null;
   return (
-    <nav aria-label="Accounts in the forecast" className="actions">
+    <nav aria-label="Accounts in the forecast" className="pills">
       {charted.map((a) =>
         a === selected ? (
-          <strong key={a.account.id}>{a.account.name}</strong>
+          <strong key={a.account.id} className="pill" aria-current="true">
+            {a.account.name}
+          </strong>
         ) : (
-          <Link key={a.account.id} href={hrefFor(a.account.id)}>
+          <Link key={a.account.id} className="pill" href={hrefFor(a.account.id)}>
             {a.account.name}
           </Link>
         ),

@@ -36,14 +36,17 @@ type SearchParams = Promise<{ show?: string }>;
 export default function BillsPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <main>
-      <p>
-        <Link href="/">← Home</Link>
-      </p>
-      <h1>Bills &amp; income</h1>
-      <p className="actions">
-        <Link href="/bills/new?kind=bill">+ Add bill</Link>
-        <Link href="/bills/new?kind=income">+ Add income</Link>
-      </p>
+      <div className="page-head">
+        <h1>Bills &amp; income</h1>
+        <p className="actions">
+          <Link className="button button-primary" href="/bills/new?kind=bill">
+            + Add bill
+          </Link>
+          <Link className="button" href="/bills/new?kind=income">
+            + Add income
+          </Link>
+        </p>
+      </div>
       <Suspense fallback={<p className="muted">Loading…</p>}>
         <Rules searchParams={searchParams} />
       </Suspense>
@@ -82,13 +85,15 @@ function describeRow(rule: RuleView, today: IsoDate, accounts: Map<string, { nam
 
 function FilterLinks({ current }: { current: Filter }) {
   return (
-    <p className="actions">
-      Show:
+    <p className="pills">
+      <span className="sr-only">Show:</span>
       {FILTERS.map((filter) =>
         filter === current ? (
-          <strong key={filter}>{FILTER_LABELS[filter]}</strong>
+          <strong key={filter} className="pill" aria-current="true">
+            {FILTER_LABELS[filter]}
+          </strong>
         ) : (
-          <Link key={filter} href={filter === "active" ? "/bills" : `/bills?show=${filter}`}>
+          <Link key={filter} className="pill" href={filter === "active" ? "/bills" : `/bills?show=${filter}`}>
             {FILTER_LABELS[filter]}
           </Link>
         ),
@@ -133,10 +138,10 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
         const total = inGroup.reduce((sum, row) => (row.state === "active" ? sum + (row.monthly ?? 0n) : sum), 0n);
         const allActive = inGroup.every((row) => row.state === "active");
         return (
-          <section key={group}>
+          <section key={group} className="panel panel-flush">
             <h2>{title}</h2>
             {note && <p className="muted">{note}</p>}
-            <table className="table" aria-label={title}>
+            <table className="table stack" aria-label={title}>
               <thead>
                 <tr>
                   <th>Name</th>
@@ -149,14 +154,17 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
               <tbody>
                 {inGroup.map((row) => (
                   <tr key={row.id}>
-                    <td>
+                    <td className="c-main">
                       <Link href={`/bills/${row.id}`}>{row.name}</Link>{" "}
                       {row.state !== "active" && <span className="chip chip-muted">{row.state === "ended" ? "Ended" : "Archived"}</span>}
                     </td>
-                    <td>{row.schedule}</td>
-                    <td>{row.accounts}</td>
-                    <td className="num">{row.amount}</td>
-                    <td className="num">{row.monthly === null ? "—" : money(row.monthly)}</td>
+                    <td className="c-sub">{row.schedule}</td>
+                    <td className="c-sub2">{row.accounts}</td>
+                    <td className="num c-amt">{row.amount}</td>
+                    <td className="num c-side">
+                      {row.monthly === null ? "—" : money(row.monthly)}
+                      {row.monthly !== null && <span className="phone-only"> a month</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

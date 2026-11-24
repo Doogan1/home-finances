@@ -1,15 +1,14 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { AccountPicker } from "@/components/forecast/account-picker";
 import { BalanceChart } from "@/components/forecast/balance-chart";
 import { NeedsTimeZone, NoForecastAccount } from "@/components/forecast/forecast-notices";
+import { ForecastStats } from "@/components/forecast/forecast-stats";
 import { NeedsAttention } from "@/components/forecast/needs-attention";
 import { NextDays } from "@/components/forecast/next-days";
 import { needsAttention, upcoming } from "@/features/forecast/attention";
 import { chooseSeries, loadHouseholdForecast } from "@/features/forecast/page-data";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
-import { SignOutButton } from "./sign-out-button";
 
 type SearchParams = Promise<{ account?: string }>;
 
@@ -41,20 +40,10 @@ async function Household({ searchParams }: { searchParams: SearchParams }) {
 
   return (
     <>
-      <p>
+      <Overview householdId={householdId} chosen={account} />
+      <p className="page-foot">
         Signed in as <strong>{user.name}</strong> ({user.email}) · household <strong>{household.name}</strong>
       </p>
-      <Overview householdId={householdId} chosen={account} />
-      <h2>More</h2>
-      <ul>
-        <li>
-          <Link href="/accounts/balances">Update balances</Link> — record hand-entered balances as of a date
-        </li>
-        <li>
-          <Link href="/transactions">Transactions</Link> — sync on demand and review recent activity
-        </li>
-      </ul>
-      <SignOutButton />
     </>
   );
 }
@@ -66,25 +55,30 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
 
   return (
     <>
-      <section aria-labelledby="forecast-heading">
-        <h2 id="forecast-heading">Forecast</h2>
+      <section aria-labelledby="forecast-heading" className="panel">
+        <h2 id="forecast-heading" className="sr-only">
+          Forecast
+        </h2>
         {selected === null ? (
           <NoForecastAccount />
         ) : (
           <>
             <AccountPicker charted={data.charted} selected={selected} hrefFor={(id) => `/?account=${id}`} />
+            <ForecastStats series={selected} today={data.today} />
             <BalanceChart name={selected.account.name} days={selected.days} cushion={selected.cushion} lowest={selected.lowest} />
           </>
         )}
       </section>
-      <section aria-labelledby="attention-heading">
-        <h2 id="attention-heading">Needs attention</h2>
-        <NeedsAttention attention={needsAttention(data.forecast, data.input)} />
-      </section>
-      <section aria-labelledby="next-heading">
-        <h2 id="next-heading">Next 7 days</h2>
-        <NextDays items={upcoming(data.forecast, data.input)} />
-      </section>
+      <div className="split">
+        <section aria-labelledby="attention-heading" className="panel">
+          <h2 id="attention-heading">Needs attention</h2>
+          <NeedsAttention attention={needsAttention(data.forecast, data.input)} />
+        </section>
+        <section aria-labelledby="next-heading" className="panel">
+          <h2 id="next-heading">Next 7 days</h2>
+          <NextDays items={upcoming(data.forecast, data.input)} />
+        </section>
+      </div>
     </>
   );
 }

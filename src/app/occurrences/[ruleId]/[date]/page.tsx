@@ -51,7 +51,7 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
 
   const header = (
     <>
-      <p>
+      <p className="back">
         <Link href={back}>← Back</Link>
       </p>
       <h1>{rule.name}</h1>
@@ -87,7 +87,7 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
         {occurrence.date !== occurrence.scheduledOn && ` · moved to ${formatIsoDate(occurrence.date)}`} ·{" "}
         {STATUS_LABELS[occurrence.status]} · <Link href={`/bills/${rule.id}`}>All its dates</Link>
       </p>
-      <p>
+      <p className="lead">
         <span className={occurrence.estimate ? "estimate" : undefined}>{money(occurrence.amount)}</span>
         {occurrence.estimate ? " (estimate)" : " (confirmed)"} · {shares.join(" · ")}
       </p>

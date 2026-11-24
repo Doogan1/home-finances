@@ -31,7 +31,7 @@ type NameOf = (accountId: string) => string;
 export default function RulePage({ params }: { params: Params }) {
   return (
     <main>
-      <p>
+      <p className="back">
         <Link href="/bills">← Bills &amp; income</Link>
       </p>
       <Suspense fallback={<p className="muted">Loading…</p>}>
@@ -169,38 +169,40 @@ function NextOccurrences({
   return (
     <>
       <h2>Next 10</h2>
-      <table className="table" aria-label="Next 10">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th className="num">Amount</th>
-            <th>Accounts</th>
-            <th>Status</th>
-            <th>Note</th>
-          </tr>
-        </thead>
-        <tbody>
-          {upcoming.map(({ date, version }) => {
-            const edit = edits.get(date);
-            const amount = edit?.confirmedAmount ?? version.amount;
-            const shares = splitAmount(toCents(amount), version.allocations)
-              .map((share) => `${nameOf(share.accountId)} ${formatMoney(fromCents(share.cents), "USD")}`)
-              .join(" · ");
-            return (
-              <tr key={date}>
-                <td>
-                  <Link href={occurrenceHref(ruleId, date, `/bills/${ruleId}`)}>{formatIsoDate(date)}</Link>
-                  {edit?.movedTo && <span className="muted"> (moved to {formatIsoDate(edit.movedTo)})</span>}
-                </td>
-                <td className="num">{formatMoney(amount, "USD")}</td>
-                <td>{shares}</td>
-                <td>{STATUS_LABELS[edit?.status ?? "PLANNED"]}</td>
-                <td>{edit?.note ?? ""}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="panel panel-flush">
+        <table className="table stack" aria-label="Next 10">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th className="num">Amount</th>
+              <th>Accounts</th>
+              <th>Status</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {upcoming.map(({ date, version }) => {
+              const edit = edits.get(date);
+              const amount = edit?.confirmedAmount ?? version.amount;
+              const shares = splitAmount(toCents(amount), version.allocations)
+                .map((share) => `${nameOf(share.accountId)} ${formatMoney(fromCents(share.cents), "USD")}`)
+                .join(" · ");
+              return (
+                <tr key={date}>
+                  <td className="c-main">
+                    <Link href={occurrenceHref(ruleId, date, `/bills/${ruleId}`)}>{formatIsoDate(date)}</Link>
+                    {edit?.movedTo && <span className="muted"> (moved to {formatIsoDate(edit.movedTo)})</span>}
+                  </td>
+                  <td className="num c-amt">{formatMoney(amount, "USD")}</td>
+                  <td className="c-sub">{shares}</td>
+                  <td className="c-side">{STATUS_LABELS[edit?.status ?? "PLANNED"]}</td>
+                  <td className="c-note">{edit?.note ?? ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

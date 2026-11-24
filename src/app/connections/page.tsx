@@ -17,9 +17,6 @@ export const metadata: Metadata = { title: "Connections · Home Finances" };
 export default function ConnectionsPage() {
   return (
     <main>
-      <p>
-        <Link href="/">← Home</Link>
-      </p>
       <h1>Connections</h1>
       <Suspense fallback={<p className="muted">Loading…</p>}>
         <Connections />
@@ -63,7 +60,7 @@ async function Connections() {
       {connections.length === 0 ? (
         <p className="muted">No banks connected yet.</p>
       ) : (
-        <ul className="cards">
+        <ul className="cards cards-wide">
           {connections.map((connection) => {
             const view = describeConnection(connection.status, connection.lastErrorCode);
             const activeAccounts = connection.accounts.filter((account) => account.active).length;

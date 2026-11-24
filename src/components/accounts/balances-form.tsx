@@ -51,12 +51,12 @@ export function BalancesForm({ rows, today }: { rows: BalanceRow[]; today: strin
   }
 
   return (
-    <form className="form" onSubmit={submit}>
+    <form className="form form-wide" onSubmit={submit}>
       <label>
         As of <span className="muted">(the balance at the end of this day)</span>
         <input type="date" name="asOfDate" defaultValue={today} max={today} required />
       </label>
-      <table className="table">
+      <table className="table stack">
         <thead>
           <tr>
             <th>Account</th>
@@ -68,13 +68,13 @@ export function BalancesForm({ rows, today }: { rows: BalanceRow[]; today: strin
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <td>
+              <td className="c-main">
                 {row.name}
                 {row.owedLabel && <span className="muted"> (owed)</span>}
               </td>
-              <td>{row.ownerLabel ?? ""}</td>
-              <td className="num">{row.last ? `${row.last.amount} · ${row.last.asOf}` : "none yet"}</td>
-              <td>
+              <td className="c-sub">{row.ownerLabel ?? ""}</td>
+              <td className="num wrap c-sub2">{row.last ? `${row.last.amount} · ${row.last.asOf}` : "none yet"}</td>
+              <td className="c-field">
                 {row.synced ? (
                   <span className="muted">Synced from the bank</span>
                 ) : (

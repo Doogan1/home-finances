@@ -41,42 +41,47 @@ async function Register({ searchParams }: { searchParams: SearchParams }) {
   return (
     <>
       <AccountPicker charted={data.charted} selected={selected} hrefFor={(id) => `/register?account=${id}`} />
-      <table className="table" aria-label={`${selected.account.name} register`}>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Name</th>
-            <th className="num">Amount</th>
-            <th className="num">Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>{formatIsoDate(selected.snapshot.date)}</td>
-            <td>Balance</td>
-            <td />
-            <td className="num">{money(toCents(selected.snapshot.balance))}</td>
-          </tr>
-          {rows.map((row) => (
-            <tr key={`${row.occurrence.ruleId}-${row.occurrence.scheduledOn}`} className={tintClass(row)}>
-              <td>{formatIsoDate(row.date)}</td>
-              <td>
-                <Link href={occurrenceHref(row.occurrence.ruleId, row.occurrence.scheduledOn, back)}>{row.occurrence.ruleName}</Link>
-                <StatusChip status={row.occurrence.status} />
-              </td>
-              <td className={row.occurrence.estimate ? "num estimate" : "num"} title={row.occurrence.estimate ? "Estimate" : undefined}>
-                {signedMoney(row.cents)}
-              </td>
-              <td className="num">
-                {money(row.balance)}
-                <span className="sr-only">{tintText(row)}</span>
-              </td>
+      <div className="panel panel-flush">
+        <table className="table stack" aria-label={`${selected.account.name} register`}>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Name</th>
+              <th className="num">Amount</th>
+              <th className="num">Balance</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="c-sub">{formatIsoDate(selected.snapshot.date)}</td>
+              <td className="c-main">Balance</td>
+              <td />
+              <td className="num c-side strong">{money(toCents(selected.snapshot.balance))}</td>
+            </tr>
+            {rows.map((row) => (
+              <tr key={`${row.occurrence.ruleId}-${row.occurrence.scheduledOn}`} className={tintClass(row)}>
+                <td className="c-sub">{formatIsoDate(row.date)}</td>
+                <td className="c-main">
+                  <Link href={occurrenceHref(row.occurrence.ruleId, row.occurrence.scheduledOn, back)}>{row.occurrence.ruleName}</Link>
+                  <StatusChip status={row.occurrence.status} />
+                </td>
+                <td
+                  className={["num c-amt", row.occurrence.estimate && "estimate", row.cents > 0n && "money-in"].filter(Boolean).join(" ")}
+                  title={row.occurrence.estimate ? "Estimate" : undefined}
+                >
+                  {signedMoney(row.cents)}
+                </td>
+                <td className="num c-side strong">
+                  {money(row.balance)}
+                  <span className="sr-only">{tintText(row)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {rows.length === 0 && <p className="muted">Nothing moves this account before {formatIsoDate(data.forecast.end)}.</p>}
-      <p className="muted">
+      <p className="muted page-note">
         From the balance of {formatIsoDate(selected.snapshot.date)} to {formatIsoDate(data.forecast.end)}. Estimates are in italics;
         days below the cushion or below zero are tinted.
       </p>

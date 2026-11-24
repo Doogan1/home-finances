@@ -43,32 +43,42 @@ async function MonthView({ searchParams }: { searchParams: SearchParams }) {
   return (
     <>
       <AccountPicker charted={data.charted} selected={selected} hrefFor={(other) => `/calendar?account=${other}&month=${month}`} />
-      <nav aria-label="Months" className="actions">
-        {grid.previous && <Link href={href(grid.previous)}>← {formatMonth(grid.previous)}</Link>}
+      <nav aria-label="Months" className="months">
+        {grid.previous && (
+          <Link className="pill" href={href(grid.previous)}>
+            ← {formatMonth(grid.previous)}
+          </Link>
+        )}
         <strong>{formatMonth(month)}</strong>
-        {grid.next && <Link href={href(grid.next)}>{formatMonth(grid.next)} →</Link>}
+        {grid.next && (
+          <Link className="pill" href={href(grid.next)}>
+            {formatMonth(grid.next)} →
+          </Link>
+        )}
       </nav>
-      <table className="calendar" aria-label={`${selected.account.name}, ${formatMonth(month)}`}>
-        <thead>
-          <tr>
-            {WEEKDAYS.map((day) => (
-              <th key={day} scope="col">
-                {day}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {grid.weeks.map((week) => (
-            <tr key={week[0].date}>
-              {week.map((day) => (
-                <Day key={day.date} day={day} back={back} />
+      <div className="panel panel-flush">
+        <table className="calendar" aria-label={`${selected.account.name}, ${formatMonth(month)}`}>
+          <thead>
+            <tr>
+              {WEEKDAYS.map((day) => (
+                <th key={day} scope="col">
+                  {day}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="muted">End-of-day balances. Estimates are in italics; days below the cushion or below zero are tinted.</p>
+          </thead>
+          <tbody>
+            {grid.weeks.map((week) => (
+              <tr key={week[0].date}>
+                {week.map((day) => (
+                  <Day key={day.date} day={day} back={back} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted page-note">End-of-day balances. Estimates are in italics; days below the cushion or below zero are tinted.</p>
     </>
   );
 }

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Sign in · Home Finances" };
 // interactive piece (the form) as a Client Component.
 export default function LoginPage() {
   return (
-    <main>
+    <main className="sign-in">
       <h1>Sign in</h1>
       <p className="muted">Home Finances is private to one household. Accounts are created by the household owner.</p>
       <LoginForm />

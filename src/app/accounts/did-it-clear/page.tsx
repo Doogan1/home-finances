@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Did it clear? · Home Finances" };
 export default function DidItClearPage() {
   return (
     <main>
-      <p>
+      <p className="back">
         <Link href="/accounts">← Accounts</Link>
       </p>
       <h1>Did it clear?</h1>
@@ -41,7 +41,7 @@ async function Questions() {
         Your balances may already include these. <strong>Cleared</strong> marks one paid; <strong>Still pending</strong> moves it to
         the day after the balance, so the forecast still counts it.
       </p>
-      <ul className="attention" aria-label="Did it clear?">
+      <ul className="attention panel" aria-label="Did it clear?">
         {questions.map((q) => (
           <ClearQuestionItem key={clearKey(q)} question={q} back="/accounts/did-it-clear" />
         ))}

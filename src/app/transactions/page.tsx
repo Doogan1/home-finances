@@ -15,9 +15,6 @@ const SHOWN = 200;
 export default function TransactionsPage() {
   return (
     <main>
-      <p>
-        <Link href="/">← Home</Link>
-      </p>
       <h1>Transactions</h1>
       <Suspense fallback={<p className="muted">Loading…</p>}>
         <Transactions />
@@ -49,7 +46,7 @@ async function Transactions() {
           No banks connected. <Link href="/connections">Connect a bank</Link> first.
         </p>
       ) : (
-        <ul className="cards">
+        <ul className="cards cards-wide">
           {connections.map((connection) => {
             const view = describeSync(
               {
@@ -89,39 +86,41 @@ async function Transactions() {
             payments), <strong>in</strong> is money arriving (deposits, refunds). Pending transactions can still change
             and are replaced when they post. Showing the latest {Math.min(transactions.length, SHOWN)}.
           </p>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Account</th>
-                <th className="num">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((t) => {
-                const outgoing = !t.amount.isNegative();
-                return (
-                  <tr key={t.id}>
-                    <td>
-                      <time dateTime={t.date.toISOString().slice(0, 10)}>{formatDate(t.date)}</time>
-                    </td>
-                    <td>
-                      {t.merchantName ?? t.description}
-                      {t.pending && <span className="chip chip-warn">Pending</span>}
-                    </td>
-                    <td className="muted">
-                      {t.account.name} {maskAccount(t.account.mask)}
-                    </td>
-                    <td className="num">
-                      {formatMoney(t.amount.abs().toFixed(), t.currency)}{" "}
-                      <span className="muted">{outgoing ? "out" : "in"}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="panel panel-flush">
+            <table className="table stack">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Account</th>
+                  <th className="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((t) => {
+                  const outgoing = !t.amount.isNegative();
+                  return (
+                    <tr key={t.id}>
+                      <td className="c-sub">
+                        <time dateTime={t.date.toISOString().slice(0, 10)}>{formatDate(t.date)}</time>
+                      </td>
+                      <td className="c-main">
+                        {t.merchantName ?? t.description}
+                        {t.pending && <span className="chip chip-warn">Pending</span>}
+                      </td>
+                      <td className="c-sub2">
+                        {t.account.name} {maskAccount(t.account.mask)}
+                      </td>
+                      <td className={outgoing ? "num c-amt" : "num c-amt money-in"}>
+                        {formatMoney(t.amount.abs().toFixed(), t.currency)}{" "}
+                        <span className="muted">{outgoing ? "out" : "in"}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </>

@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Update balances · Home Finances" };
 export default function UpdateBalancesPage() {
   return (
     <main>
-      <p>
+      <p className="back">
         <Link href="/accounts">← Accounts</Link>
       </p>
       <h1>Update balances</h1>

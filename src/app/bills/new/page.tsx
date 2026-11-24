@@ -13,7 +13,7 @@ type SearchParams = Promise<{ kind?: string }>;
 export default function NewRulePage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <main>
-      <p>
+      <p className="back">
         <Link href="/bills">← Bills &amp; income</Link>
       </p>
       <Suspense fallback={<p className="muted">Loading…</p>}>

@@ -65,7 +65,7 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
           <>
             <AccountPicker charted={data.charted} selected={selected} hrefFor={(id) => `/?account=${id}`} />
             <ForecastStats series={selected} today={data.today} />
-            <BalanceChart name={selected.account.name} days={selected.days} cushion={selected.cushion} lowest={selected.lowest} />
+            <BalanceChart name={selected.account.name} days={selected.days} cushion={selected.cushion} lowest={selected.lowest} today={data.today} />
           </>
         )}
       </section>

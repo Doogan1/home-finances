@@ -941,21 +941,109 @@ p.notice-warn {
   margin: var(--s4) 0 0;
 }
 
+.chart {
+  --chart-h: 11rem;
+}
+
+@media (min-width: 40rem) {
+  .chart {
+    --chart-h: 15rem;
+  }
+}
+
+/* The scale in a gutter on the left, the plot filling the rest. */
+.chart-frame {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s2);
+}
+
+.chart-axis {
+  position: relative;
+  min-width: 2.25rem;
+  height: var(--chart-h);
+  margin-top: 1.25rem;
+}
+
+.chart-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: var(--t-xs);
+  line-height: 1;
+  color: var(--muted);
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+/* Reserve the width of the widest label, which is absolutely placed. */
+.chart-axis::before {
+  content: "-$0.00k";
+  display: block;
+  height: 0;
+  overflow: hidden;
+  font-size: var(--t-xs);
+  visibility: hidden;
+}
+
 .chart-plot {
   position: relative;
   padding-top: 1.25rem;
 }
 
+.chart-canvas {
+  position: relative;
+}
+
 .chart svg {
   display: block;
   width: 100%;
-  height: 11rem;
+  height: var(--chart-h);
 }
 
-@media (min-width: 40rem) {
-  .chart svg {
-    height: 15rem;
-  }
+/* The surface a person points at: over the whole plot, sideways drags stay here. */
+.chart-pick {
+  position: absolute;
+  inset: 0;
+  touch-action: pan-y;
+  cursor: crosshair;
+  border-radius: var(--radius);
+}
+
+.chart-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-strong);
+  pointer-events: none;
+}
+
+.chart-dot {
+  position: absolute;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin: -0.3125rem 0 0 -0.3125rem;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.chart-readout {
+  min-height: 2.5rem;
+  margin: var(--s2) 0 0;
+  font-size: var(--t-sm);
+}
+
+.chart-readout-balance {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
 }
 
 .chart svg * {
@@ -988,6 +1076,22 @@ p.notice-warn {
 .chart-month {
   stroke: var(--line);
   stroke-width: 1;
+}
+
+.chart-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.chart-today {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.chart-line-past {
+  stroke: var(--line-strong);
 }
 
 .chart-label {

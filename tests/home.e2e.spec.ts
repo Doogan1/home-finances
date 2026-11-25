@@ -74,6 +74,19 @@ test("Home shows each account's forecast, what needs attention and the next 7 da
   await expect(forecast.locator("figcaption")).toContainText(`Lowest $200.00 on ${shown(plusDays(now, 5))}`);
   await expect(forecast.locator("figcaption")).toContainText("cushion $1,500.00");
 
+  // The chart has a dollar scale, and a day can be read with the keyboard or by pointing.
+  await expect(forecast.locator(".chart-axis")).toContainText("$2k");
+  const day = forecast.getByRole("slider", { name: "Day" });
+  await day.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(day).toHaveAttribute("aria-valuetext", `${shown(now)}: $2,000.00`);
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  const readout = forecast.locator(".chart-readout");
+  await expect(readout).toContainText(`${shown(plusDays(now, 5))} $200.00`);
+  await expect(readout).toContainText("E2E Home Big bill -$2,500.00");
+  await day.click({ position: { x: 3, y: 20 } });
+  await expect(readout).toContainText(`${shown(now)} $2,000.00`);
+
   const attention = page.getByRole("region", { name: "Needs attention" });
   await expect(attention).toContainText(`E2E Home Spend goes below its cushion on ${shown(plusDays(now, 5))}`);
   await expect(attention).toContainText("E2E Home Paycheck");

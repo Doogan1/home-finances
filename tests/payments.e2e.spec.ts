@@ -104,6 +104,40 @@ test("a payment is confirmed once, the rest match themselves, and a match can be
   await expect(page.getByRole("table", { name: "Next 7 days" }).getByRole("row", { name: /E2E Lawn care/ }).first()).toContainText("-$63.25");
   await page.goto("/bills");
   await expect(page.getByRole("row", { name: /E2E Lawn care/ })).toContainText("about $63.25");
+
+  // The past. The chart begins 30 days back with what the bank's transactions say the balance was.
+  await page.goto(`/?account=${accountId}`);
+  const forecast = page.getByRole("region", { name: "Forecast" });
+  await expect(forecast.locator("figcaption")).toContainText("grey is what happened");
+  const day = forecast.getByRole("slider", { name: "Day" });
+  await day.focus();
+  await page.keyboard.press("Home");
+  await expect(day).toHaveAttribute("aria-valuetext", `${shown(plusDays(now, -30))}: $3,186.50`);
+  for (let i = 0; i < 17; i++) await page.keyboard.press("ArrowRight");
+  await expect(forecast.locator(".chart-readout")).toContainText(`${shown(plusDays(now, -13))} $3,058.00 · actual · E2E Lawn care -$62.50`);
+
+  // The Register shows the real transactions above the latest balance, on request.
+  await page.goto(`/register?account=${accountId}`);
+  await expect(page.locator("tr.past-row")).toHaveCount(0);
+  await page.getByRole("link", { name: "Show the past 30 days" }).click();
+  await expect(page.locator("tr.past-row")).toHaveCount(3);
+  const paid = page.locator("tr.past-row", { hasText: shown(plusDays(now, -13)) });
+  await expect(paid).toContainText("E2E Greenthumb Lawn");
+  await expect(paid.getByRole("link", { name: "E2E Lawn care" })).toBeVisible();
+  await expect(paid).toContainText("-$62.50");
+  await expect(paid).toContainText("$3,058.00");
+  await page.getByRole("link", { name: "Show earlier (90 days)" }).click();
+  await expect(page.locator("tr.past-row")).toHaveCount(4);
+  await expect(page.locator("tr.past-row").first()).toContainText("$3,186.50");
+  await page.getByRole("link", { name: "Hide the past" }).click();
+  await expect(page.locator("tr.past-row")).toHaveCount(0);
+
+  // The Calendar goes back too: the payment sits on the day the bank shows it, with that day's balance.
+  await page.goto(`/calendar?account=${accountId}&month=${plusDays(now, -13).slice(0, 7)}`);
+  const cell = page.locator(`td[data-date="${plusDays(now, -13)}"]`);
+  await expect(cell).toContainText("E2E Lawn care");
+  await expect(cell).toContainText("-$62.50");
+  await expect(cell).toContainText("$3,058.00");
 });
 
 test("the payment routes refuse anonymous callers and unknown transactions", async ({ page, request }) => {

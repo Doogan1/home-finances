@@ -6,9 +6,15 @@ import { NeedsTimeZone, NoForecastAccount } from "@/components/forecast/forecast
 import { money, signedMoney } from "@/components/forecast/money";
 import { occurrenceHref } from "@/components/forecast/occurrence-link";
 import { tintClass, tintText } from "@/components/forecast/tint";
-import { calendarMonth, chooseMonth, formatMonth, type CalendarDay } from "@/features/forecast/calendar";
-import { chooseSeries, loadHouseholdForecast } from "@/features/forecast/page-data";
+import { calendarMonth, chooseMonth, formatMonth, pastItems, type CalendarDay, type CalendarItem } from "@/features/forecast/calendar";
+import { occurrencesBetween } from "@/features/forecast/occurrences";
+import { chooseSeries, loadHouseholdForecast, loadPast } from "@/features/forecast/page-data";
+import { PAST_MAX_DAYS } from "@/features/forecast/past-queries";
+import { listPayments } from "@/features/payments/queries";
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
+import { addDays } from "@/lib/calendar-date";
+import { getDb } from "@/lib/db";
 
 export const metadata: Metadata = { title: "Calendar · Home Finances" };
 
@@ -34,8 +40,25 @@ async function MonthView({ searchParams }: { searchParams: SearchParams }) {
   const selected = chooseSeries(data.charted, account);
   if (!selected) return <NoForecastAccount />;
 
-  const month = chooseMonth(selected, requested, data.today);
-  const grid = calendarMonth(selected, month, data.today);
+  // Before the forecast: what was saved, and what was due (paid dates on the day the bank shows).
+  const firstDay = selected.days[0].date;
+  const [pastDays, payments] = await Promise.all([
+    loadPast(householdId, data, selected, PAST_MAX_DAYS),
+    listPayments(getDb(), householdId, { environment: getPlaidEnvironment() }),
+  ]);
+  const earliest = pastDays[0]?.date;
+  const past = {
+    days: pastDays,
+    items:
+      earliest === undefined
+        ? new Map<string, CalendarItem[]>()
+        : pastItems(occurrencesBetween(data.input.rules, data.input.overrides, earliest, addDays(firstDay, -1)), selected.account.id, firstDay, {
+            matched: new Set(payments.map((p) => `${p.ruleId}|${p.scheduledOn}`)),
+            hasBank: pastDays.some((day) => day.from === "worked" || day.transactions.length > 0),
+          }),
+  };
+  const month = chooseMonth(selected, requested, data.today, earliest);
+  const grid = calendarMonth(selected, month, data.today, past);
   const id = selected.account.id;
   const href = (m: string) => `/calendar?account=${id}&month=${m}`;
   const back = href(month);
@@ -78,7 +101,10 @@ async function MonthView({ searchParams }: { searchParams: SearchParams }) {
           </tbody>
         </table>
       </div>
-      <p className="muted page-note">End-of-day balances. Estimates are in italics; days below the cushion or below zero are tinted.</p>
+      <p className="muted page-note">
+        End-of-day balances. Estimates are in italics; days below the cushion or below zero are tinted. Before the latest balance,
+        a paid item sits on the day the bank shows it, and one with no payment found is marked.
+      </p>
     </>
   );
 }
@@ -98,6 +124,8 @@ function Day({ day, back }: { day: CalendarDay; back: string }) {
             <li key={`${item.occurrence.ruleId}-${item.occurrence.scheduledOn}`}>
               <Link href={occurrenceHref(item.occurrence.ruleId, item.occurrence.scheduledOn, back)}>{item.occurrence.ruleName}</Link>{" "}
               <span className={item.occurrence.estimate ? "estimate" : undefined}>{signedMoney(item.cents)}</span>
+              {item.past === "unpaid" && <span className="calendar-unpaid"> no payment found</span>}
+              {item.past === "hand" && <span className="sr-only"> (marked paid)</span>}
             </li>
           ))}
         </ul>

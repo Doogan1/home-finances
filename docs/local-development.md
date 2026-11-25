@@ -20,8 +20,11 @@ VM, see [future-deployment.md](future-deployment.md).
 | Add a bill or an income stream | Bills & income → **+ Add bill** or **+ Add income** |
 | Change a bill or paycheck from a date on (a raise, a new amount) | Open it → **Change from…** (the old version ends the day before) |
 | Stop one (leaving a job, cancelling a service) | Open it → **Stop on…**; undo with **Edit this version** and a blank "Ends on" |
-| See where each account is heading | Home: the chart shows the next 90 days' end-of-day balances; when there is more than one account, pick another above it |
-| Find out what needs a look | Home → **Needs attention** (low days, estimates due soon, balances to update, "Did it clear?") |
+| See where each account is heading | Home: the chart shows the last 30 days (grey, from saved balances and bank transactions) and the next 90 days' end-of-day balances, with a dollar scale; tap, drag or use the arrow keys to read a day; when there is more than one account, pick another above it |
+| Find out what needs a look | Home → **Needs attention** (payments to confirm, low days, estimates due soon, balances to update, "Did it clear?", fixed bills whose payments differ) |
+| Match a bank transaction to a bill or income | Answer **Yes** to "Is this …?" on Home or Transactions, or open the transaction → **Match**. After one Yes for a payee, clear fits are matched for you (marked **Auto**); **Undo match** on the transaction puts the date back |
+| Let a bill's estimate follow its real payments | Open it → **Estimate** → **Let the amount vary** (the middle of its last six payments, once there are three) |
+| See what was paid in the past | The bill's **Past** table; Register → **Show the past 30 days**; earlier months on the Calendar |
 | Import the workbook (once) | [see below](#importing-the-workbook) |
 | Back up | `npm run backup` (on the host) |
 | Restore (safely, into a separate database) | `npm run restore -- <file>` |

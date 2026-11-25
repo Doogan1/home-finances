@@ -128,6 +128,31 @@ upserts make that safe:
 update "PlaidItem" set "syncCursor" = null where id = '<connection id>';
 ```
 
+## Matching payments to bills and income
+
+After a sync that succeeds (button or command line), and after an account is attached
+or the person answers a question, `runMatching` (`src/features/payments/service.ts`)
+links posted transactions to bills and income:
+
+- Only posted, not-removed transactions in the person's own accounts (ones with a bank
+  attached) take part. A pending one waits until it posts.
+- A match is a `Payment` row and nothing else. Occurrence edits are never changed: the
+  forecast reads them with payments laid over (`src/features/payments/layer.ts`), so a
+  matched date is Paid, for the real amount, on the real day, and **Undo match** restores
+  exactly what was there.
+- Nothing is linked for a payee until the person has said **Yes** once for that bill.
+  After that, a transaction is linked by itself only when that one bill knows the payee,
+  the nearest unpaid due date (within 10 days) is unambiguous, and the amount is plausible
+  (within 25% for a Fixed bill; half to double for one that Varies). Everything else is a
+  question on Home and Transactions.
+- **No** and **Undo** are remembered (`MatchDecline`): that pair is not proposed again, and
+  that payee is no longer linked to that bill without asking.
+- Deleting a connection's saved history deletes its transactions, and their payments with
+  them.
+
+The rules are in `src/features/payments/match.ts` and are covered by
+`tests/payments-match.test.ts`.
+
 ## Limits and not covered
 
 - One sync applies at most 20,000 updates in a single commit. Larger histories

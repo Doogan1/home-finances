@@ -96,7 +96,7 @@ describe("createLinkAttempt", () => {
       sessionId,
       environment: "SANDBOX",
       status: "PENDING",
-      requestedHistoryDays: 90,
+      requestedHistoryDays: 365,
     });
     const lifetimeMinutes = (attempt.expiresAt.getTime() - clock.getTime()) / 60_000;
     expect(lifetimeMinutes).toBeGreaterThan(0);

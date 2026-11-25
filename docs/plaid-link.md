@@ -25,8 +25,9 @@ browser                           our server                         Plaid
   The long-lived **access token** exists only on the server, encrypted with
   `TOKEN_ENCRYPTION_KEY` and bound to its environment and Plaid Item id. It is
   never sent to the browser, logged, or included in an error.
-- Link is requested for **Transactions only**, with **90 days** of history
-  recorded on the attempt. Auth is not requested just to read balances.
+- Link is requested for **Transactions only**, with **365 days** of history
+  recorded on the attempt (connections made before 2026-11-25 asked for 90, and Plaid
+  keeps what a connection was first made with). Auth is not requested just to read balances.
   Balances come from `/accounts/get`; a fresh-balance call (`/accounts/balance/get`)
   is deliberately not used yet.
 - Institution and account details the browser reports are ignored. Everything

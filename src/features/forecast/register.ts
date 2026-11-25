@@ -1,6 +1,6 @@
 import type { IsoDate } from "@/lib/calendar-date";
 import type { Cents } from "@/lib/cents";
-import type { AccountSeries, ForecastDay, ForecastItem } from "./engine";
+import type { AccountSeries, ForecastItem } from "./engine";
 import type { ComputedOccurrence } from "./occurrences";
 
 /**
@@ -19,8 +19,8 @@ export type RegisterRow = {
 };
 
 /** A day's items with income first, so a payday never shows a dip that does not happen. */
-export function orderedItems(day: ForecastDay): ForecastItem[] {
-  const rank = (item: ForecastItem) => (item.occurrence.kind === "INCOME" ? 0 : 1);
+export function orderedItems<T extends ForecastItem>(day: { items: readonly T[] }): T[] {
+  const rank = (item: T) => (item.occurrence.kind === "INCOME" ? 0 : 1);
   return [...day.items].sort(
     (a, b) =>
       rank(a) - rank(b) ||

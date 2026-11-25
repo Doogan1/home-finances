@@ -9,7 +9,8 @@ import { compactMoney, money, signedMoney } from "./money";
 const monthLabel = (date: string) =>
   new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 
-export type ChartedDay = ChartDay & { items?: readonly ForecastItem[] };
+/** A forecast day brings its items; a past day brings `notes`, already worded. */
+export type ChartedDay = ChartDay & { items?: readonly ForecastItem[]; notes?: readonly string[] };
 
 /**
  * One account's balance, drawn on the server: real balances before today (when
@@ -39,7 +40,7 @@ export function BalanceChart({
   const pickerDays: PickerDay[] = days.map((day, i) => ({
     date: formatIsoDate(day.date),
     balance: money(day.closing),
-    items: (day.items ?? []).map((item) => `${item.occurrence.ruleName} ${signedMoney(item.cents)}`),
+    items: day.notes ? [...day.notes] : (day.items ?? []).map((item) => `${item.occurrence.ruleName} ${signedMoney(item.cents)}`),
     left: across(geometry.points[i].x),
     top: down(geometry.points[i].y),
     past: day.past === true,

@@ -45,7 +45,9 @@ import {
  */
 
 const ATTEMPT_LIFETIME_MS = 30 * 60 * 1000;
-const REQUESTED_HISTORY_DAYS = 90;
+// A year, so bills have real payments to learn from. Plaid fixes this when a bank is first connected:
+// a connection made with 90 days keeps 90.
+const REQUESTED_HISTORY_DAYS = 365;
 
 /** Binds a stored link token to its attempt, so it cannot be decrypted as another's. */
 const linkTokenContext = (attemptId: string) => `link-attempt:${attemptId}`;

@@ -235,7 +235,7 @@ The Plaid flow, what is stored, the protections and the recovery steps are in
 [docs/plaid-link.md](docs/plaid-link.md). Highlights:
 
 - **plaid 49.0.0** (official Node SDK) and **react-plaid-link 5.0.0**, both pinned. All SDK access is in `src/features/plaid/client.ts`, which reduces SDK errors (they embed the request, including secrets) to a category plus Plaid's error code and request id.
-- Link is requested for **Transactions only, 90 days**. Balances come from `/accounts/get` and are shown with the time they were observed. Nothing calls Plaid when a page is viewed; fetching is an explicit click.
+- Link is requested for **Transactions only, 365 days** (90 for connections made before 2026-11-25). Balances come from `/accounts/get` and are shown with the time they were observed. Nothing calls Plaid when a page is viewed; fetching is an explicit click.
 - A public token is exchanged **once**: the attempt is claimed atomically, and any uncertain outcome becomes `NEEDS_RECONCILIATION` instead of a retry.
 - Browser tests never call Plaid's API or any bank (the pages that include Plaid Link do load Plaid's Link script from Plaid's servers, as any browser would). The real Link flow is a manual Sandbox check; see the end of docs/plaid-link.md.
 - Dev dependency refresh: after pulling this change, rebuild the dependency volume (see "Where things live") and run `docker compose exec app npm run db:migrate`.

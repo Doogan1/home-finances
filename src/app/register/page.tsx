@@ -7,7 +7,8 @@ import { money, signedMoney } from "@/components/forecast/money";
 import { occurrenceHref } from "@/components/forecast/occurrence-link";
 import { StatusChip } from "@/components/forecast/status";
 import { tintClass, tintText } from "@/components/forecast/tint";
-import { chooseSeries, loadHouseholdForecast } from "@/features/forecast/page-data";
+import { chooseSeries, loadHouseholdForecast, loadPast } from "@/features/forecast/page-data";
+import { pastRows } from "@/features/forecast/past";
 import { registerRows } from "@/features/forecast/register";
 import { formatIsoDate } from "@/features/rules/summary";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
@@ -15,7 +16,10 @@ import { toCents } from "@/lib/cents";
 
 export const metadata: Metadata = { title: "Register · Home Finances" };
 
-type SearchParams = Promise<{ account?: string }>;
+type SearchParams = Promise<{ account?: string; past?: string }>;
+
+/** How far back the Register can show, a step at a time. */
+const PAST_STEPS = [30, 90, 180, 365];
 
 export default function RegisterPage({ searchParams }: { searchParams: SearchParams }) {
   return (
@@ -30,17 +34,39 @@ export default function RegisterPage({ searchParams }: { searchParams: SearchPar
 
 async function Register({ searchParams }: { searchParams: SearchParams }) {
   const { householdId } = await requireHouseholdOrRedirect();
-  const { account } = await searchParams;
+  const { account, past: requested } = await searchParams;
   const data = await loadHouseholdForecast(householdId);
   if (!data.ready) return <NeedsTimeZone />;
   const selected = chooseSeries(data.charted, account);
   if (!selected) return <NoForecastAccount />;
 
-  const back = `/register?account=${selected.account.id}`;
+  const here = `/register?account=${selected.account.id}`;
+  const days = PAST_STEPS.find((step) => String(step) === requested) ?? null;
+  const back = days === null ? here : `${here}&past=${days}`;
   const rows = registerRows(selected);
+  const pastDays = days === null ? [] : await loadPast(householdId, data, selected, days);
+  const earlier = pastRows(pastDays);
+  const saved = pastDays.filter((day) => day.from === "saved");
+  const further = days === null ? PAST_STEPS[0] : (PAST_STEPS[PAST_STEPS.indexOf(days) + 1] ?? null);
   return (
     <>
-      <AccountPicker charted={data.charted} selected={selected} hrefFor={(id) => `/register?account=${id}`} />
+      <AccountPicker
+        charted={data.charted}
+        selected={selected}
+        hrefFor={(id) => (days === null ? `/register?account=${id}` : `/register?account=${id}&past=${days}`)}
+      />
+      <p className="pills">
+        {further !== null && (
+          <Link className="pill" href={`${here}&past=${further}#latest`}>
+            {days === null ? `Show the past ${further} days` : `Show earlier (${further} days)`}
+          </Link>
+        )}
+        {days !== null && (
+          <Link className="pill" href={here}>
+            Hide the past
+          </Link>
+        )}
+      </p>
       <div className="panel panel-flush">
         <table className="table stack" aria-label={`${selected.account.name} register`}>
           <thead>
@@ -52,7 +78,34 @@ async function Register({ searchParams }: { searchParams: SearchParams }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
+            {earlier.length === 0 &&
+              saved.map((day) => (
+                <tr key={`saved-${day.date}`} className="past-row">
+                  <td className="c-sub">{formatIsoDate(day.date)}</td>
+                  <td className="c-main">Balance saved</td>
+                  <td />
+                  <td className="num c-side strong">{money(day.closing)}</td>
+                </tr>
+              ))}
+            {earlier.map((row) => (
+              <tr key={row.transaction.id} className="past-row">
+                <td className="c-sub">{formatIsoDate(row.date)}</td>
+                <td className="c-main">
+                  <Link href={`/transactions/${row.transaction.id}`}>{row.transaction.payee}</Link>
+                  {row.transaction.ruleId && (
+                    <>
+                      {" "}
+                      <Link className="chip chip-ok" href={`/bills/${row.transaction.ruleId}`}>
+                        {row.transaction.ruleName}
+                      </Link>
+                    </>
+                  )}
+                </td>
+                <td className={row.transaction.cents > 0n ? "num c-amt money-in" : "num c-amt"}>{signedMoney(row.transaction.cents)}</td>
+                <td className="num c-side strong">{money(row.balance)}</td>
+              </tr>
+            ))}
+            <tr id="latest">
               <td className="c-sub">{formatIsoDate(selected.snapshot.date)}</td>
               <td className="c-main">Balance</td>
               <td />
@@ -81,7 +134,11 @@ async function Register({ searchParams }: { searchParams: SearchParams }) {
         </table>
       </div>
       {rows.length === 0 && <p className="muted">Nothing moves this account before {formatIsoDate(data.forecast.end)}.</p>}
+      {days !== null && earlier.length === 0 && saved.length === 0 && (
+        <p className="muted">Nothing is saved for this account in the {days} days before its latest balance.</p>
+      )}
       <p className="muted page-note">
+        {days !== null && earlier.length > 0 && <>Above the balance: what the bank shows, with each day worked back from the balances saved. </>}
         From the balance of {formatIsoDate(selected.snapshot.date)} to {formatIsoDate(data.forecast.end)}. Estimates are in italics;
         days below the cushion or below zero are tinted.
       </p>

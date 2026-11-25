@@ -1,18 +1,38 @@
 import { Suspense } from "react";
 import { AccountPicker } from "@/components/forecast/account-picker";
-import { BalanceChart } from "@/components/forecast/balance-chart";
 import { NeedsTimeZone, NoForecastAccount } from "@/components/forecast/forecast-notices";
 import { ForecastStats } from "@/components/forecast/forecast-stats";
 import { NeedsAttention } from "@/components/forecast/needs-attention";
-import { money } from "@/components/forecast/money";
+import { BalanceChart, type ChartedDay } from "@/components/forecast/balance-chart";
+import { money, signedMoney } from "@/components/forecast/money";
 import { NextDays } from "@/components/forecast/next-days";
 import { needsAttention, upcoming } from "@/features/forecast/attention";
-import { chooseSeries, loadHouseholdForecast } from "@/features/forecast/page-data";
+import type { AccountSeries } from "@/features/forecast/engine";
+import { chooseSeries, loadHouseholdForecast, loadPast } from "@/features/forecast/page-data";
+import type { PastDay } from "@/features/forecast/past";
+import { PAST_CHART_DAYS } from "@/features/forecast/past-queries";
 import { loadPaymentAttention } from "@/features/payments/page-data";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
 
 type SearchParams = Promise<{ account?: string }>;
+
+/** A past day tells the chart's read-out what really moved: up to three transactions, by bill name when matched. */
+const NOTES_SHOWN = 3;
+function pastChartDays(past: readonly PastDay[], series: AccountSeries): ChartedDay[] {
+  return past.map((day) => {
+    const notes = day.transactions.slice(0, NOTES_SHOWN).map((t) => `${t.ruleName ?? t.payee} ${signedMoney(t.cents)}`);
+    if (day.transactions.length > NOTES_SHOWN) notes.push(`${day.transactions.length - NOTES_SHOWN} more`);
+    return {
+      date: day.date,
+      closing: day.closing,
+      belowZero: day.closing < 0n,
+      belowCushion: series.cushion !== null && day.closing < series.cushion,
+      past: true,
+      notes,
+    };
+  });
+}
 
 // The page itself is static; everything that depends on who is asking streams
 // in behind Suspense (reading the session cookie is request-time work, which
@@ -54,7 +74,10 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
   const data = await loadHouseholdForecast(householdId);
   if (!data.ready) return <NeedsTimeZone />;
   const selected = chooseSeries(data.charted, chosen);
-  const payments = await loadPaymentAttention(householdId, data.today);
+  const [payments, past] = await Promise.all([
+    loadPaymentAttention(householdId, data.today),
+    selected ? loadPast(householdId, data, selected, PAST_CHART_DAYS) : [],
+  ]);
   const differ = payments.differ.map((d) => ({
     ruleId: d.ruleId,
     ruleName: d.ruleName,
@@ -75,7 +98,13 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
           <>
             <AccountPicker charted={data.charted} selected={selected} hrefFor={(id) => `/?account=${id}`} />
             <ForecastStats series={selected} today={data.today} />
-            <BalanceChart name={selected.account.name} days={selected.days} cushion={selected.cushion} lowest={selected.lowest} today={data.today} />
+            <BalanceChart
+              name={selected.account.name}
+              days={[...pastChartDays(past, selected), ...selected.days]}
+              cushion={selected.cushion}
+              lowest={selected.lowest}
+              today={data.today}
+            />
           </>
         )}
       </section>

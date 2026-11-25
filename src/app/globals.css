@@ -1451,6 +1451,16 @@ p.notice-warn {
   font-variant-numeric: lining-nums tabular-nums;
 }
 
+.calendar-unpaid {
+  color: var(--warn);
+  font-size: var(--t-xs);
+}
+
+/* Real rows above the latest balance in the Register. */
+.table .past-row {
+  background: var(--surface-2);
+}
+
 .calendar-date {
   font-weight: 500;
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { attachBankAccount } from "@/features/accounts/attach";
 import { accountErrorResponse, accountNotFound } from "@/features/accounts/http";
 import { attachAccountInput } from "@/features/accounts/input";
+import { runMatchingQuietly } from "@/features/payments/service";
 import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { authorizeMutation } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
@@ -17,9 +18,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const body = await readJson(request, attachAccountInput);
   if (!body) return badRequest();
   try {
-    const result = await attachBankAccount(getDb(), authorization.context.householdId, id.data, body, {
-      environment: getPlaidEnvironment(),
-    });
+    const { householdId } = authorization.context;
+    const environment = getPlaidEnvironment();
+    const result = await attachBankAccount(getDb(), householdId, id.data, body, { environment });
+    // The bank's transactions are now in an account bills can use.
+    await runMatchingQuietly(getDb(), householdId, { environment });
     return jsonNoStore({ ok: true, ...result });
   } catch (error) {
     return accountErrorResponse(error, "accounts.attach");

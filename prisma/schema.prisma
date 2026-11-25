@@ -39,6 +39,8 @@ model Household {
   linkAttempts LinkAttempt[]
   rules               Rule[]
   occurrenceOverrides OccurrenceOverride[]
+  payments            Payment[]
+  matchDeclines       MatchDecline[]
 }
 
 // User, Session, AuthAccount and RateLimit are the tables Better Auth reads and
@@ -59,6 +61,7 @@ model User {
   sessions     Session[]
   authAccounts AuthAccount[]
   occurrenceEdits OccurrenceOverride[]
+  payments        Payment[]
 }
 
 // Named AuthAccount (not Account) because Account is a bank account here.
@@ -303,6 +306,20 @@ enum OccurrenceStatus {
   SKIPPED
 }
 
+// Where a rule's estimate for future dates comes from: the amount the person
+// typed (FIXED), or what its recent payments typically were (VARIES).
+enum EstimateMode {
+  FIXED
+  VARIES
+}
+
+enum PaymentSource {
+  // Linked by the app, because the payee was already confirmed for this rule.
+  AUTO
+  // Linked or confirmed by a person.
+  PERSON
+}
+
 // A bill or an income stream: its identity. What it does, and from when, is in
 // its versions. Never deleted by the app; archived instead, so history stays.
 model Rule {
@@ -316,6 +333,7 @@ model Rule {
   paysAccountId String?   @db.Uuid
   // The workbook's id (MORT, NANNY, ...) for imported rules; set only by the import.
   importRef     String?
+  estimateMode  EstimateMode @default(FIXED)
   archivedAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -324,6 +342,8 @@ model Rule {
   paysAccount Account?             @relation("RulePaysAccount", fields: [paysAccountId], references: [id], onDelete: Restrict)
   versions    RuleVersion[]
   overrides   OccurrenceOverride[]
+  payments    Payment[]
+  declines    MatchDecline[]
 
   @@unique([householdId, importRef])
   // Lets OccurrenceOverride prove its rule belongs to the same household.
@@ -417,10 +437,58 @@ model Transaction {
   updatedAt                    DateTime  @updatedAt
 
   // Composite key guarantees the account belongs to this same Item.
-  account Account @relation(fields: [accountId, plaidItemId], references: [id, plaidItemId], onDelete: Cascade)
+  account  Account        @relation(fields: [accountId, plaidItemId], references: [id, plaidItemId], onDelete: Cascade)
+  payment  Payment?
+  declines MatchDecline[]
 
   @@unique([plaidItemId, providerTransactionId])
   @@index([accountId, date(sort: Desc)])
+}
+
+// A bank transaction that paid one bill, or was one income. Occurrence edits are
+// never changed by a match: the forecast layers payments over them, so undoing
+// a match (deleting this row) brings back exactly what was there. Deleted with
+// its transaction when a connection's saved history is deleted.
+model Payment {
+  id              String        @id @default(uuid()) @db.Uuid
+  householdId     String        @db.Uuid
+  ruleId          String        @db.Uuid
+  // One transaction pays one thing.
+  transactionId   String        @unique @db.Uuid
+  // The date the rule produced that this pays. Null: no due date (a payment
+  // from before the rule's first date, kept as history for its estimate).
+  scheduledOn     DateTime?     @db.Date
+  source          PaymentSource
+  createdAt       DateTime      @default(now())
+  createdByUserId String?       @db.Uuid
+
+  household     Household   @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  // Composite key guarantees the rule belongs to this same household.
+  rule          Rule        @relation(fields: [ruleId, householdId], references: [id, householdId], onDelete: Cascade)
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdByUser User?       @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([householdId])
+  @@index([ruleId, scheduledOn])
+}
+
+// "No, this transaction is not that bill": the pair is never suggested or
+// linked automatically again, and its payee is no longer linked automatically
+// to that rule.
+model MatchDecline {
+  id            String   @id @default(uuid()) @db.Uuid
+  householdId   String   @db.Uuid
+  ruleId        String   @db.Uuid
+  transactionId String   @db.Uuid
+  payeeKey      String
+  createdAt     DateTime @default(now())
+
+  household   Household   @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  rule        Rule        @relation(fields: [ruleId, householdId], references: [id, householdId], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, transactionId])
+  @@index([householdId])
 }
 
 // ---------------------------------------------------------------------------

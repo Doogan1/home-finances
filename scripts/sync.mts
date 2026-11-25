@@ -1,3 +1,4 @@
+import { runMatchingQuietly } from "@/features/payments/service";
 import { getLinkDeps } from "@/features/plaid/deps";
 import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { syncItem } from "@/features/plaid/sync";
@@ -76,6 +77,8 @@ async function main() {
         console.log(`${label}: ${known ?? "could not start the sync"}`);
       }
     }
+    const { linked } = await runMatchingQuietly(db, household.id, { environment: getPlaidEnvironment() });
+    if (linked > 0) console.log(`Matched ${linked} ${linked === 1 ? "payment" : "payments"} to bills and income.`);
     if (anyFailed) process.exitCode = 1;
   } finally {
     await db.$disconnect();

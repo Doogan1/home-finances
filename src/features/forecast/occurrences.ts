@@ -12,7 +12,18 @@ import { toCents, type Cents } from "@/lib/cents";
  */
 
 export type OccurrenceStatus = "PLANNED" | "CONFIRMED" | "PAID" | "SKIPPED";
-export type ForecastRule = { id: string; name: string; kind: RuleKind; versions: StoredVersion[] };
+export type ForecastRule = {
+  id: string;
+  name: string;
+  kind: RuleKind;
+  versions: StoredVersion[];
+  /**
+   * For a rule whose amount varies: what its recent payments typically were.
+   * It stands in for the version's amount on dates scheduled on or after
+   * `from` (today), so the past keeps the amounts it had.
+   */
+  typical?: { amount: string; from: IsoDate };
+};
 export type ForecastOverride = {
   ruleId: string;
   scheduledOn: IsoDate;
@@ -47,7 +58,8 @@ function producedOn(rule: ForecastRule, date: IsoDate) {
 /** One scheduled date of a version, with the person's edit (if any) applied. */
 function computed(rule: ForecastRule, version: StoredVersion, scheduledOn: IsoDate, e: ForecastOverride | undefined): ComputedOccurrence {
   const confirmed = e?.confirmedAmount ?? null;
-  const amount = toCents(confirmed ?? version.amount);
+  const planned = rule.typical && scheduledOn >= rule.typical.from ? rule.typical.amount : version.amount;
+  const amount = toCents(confirmed ?? planned);
   return {
     ruleId: rule.id,
     ruleName: rule.name,

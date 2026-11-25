@@ -37,6 +37,7 @@ export type RuleView = {
   category: string | null;
   notes: string | null;
   archivedAt: Date | null;
+  estimateMode: "FIXED" | "VARIES";
   paysAccount: { id: string; name: string } | null;
   versions: StoredVersion[];
 };
@@ -54,6 +55,7 @@ function toRuleView(rule: Prisma.RuleGetPayload<{ include: typeof ruleInclude }>
     category: rule.category,
     notes: rule.notes,
     archivedAt: rule.archivedAt,
+    estimateMode: rule.estimateMode,
     paysAccount: rule.paysAccount,
     versions: rule.versions.map(toStoredVersion),
   };

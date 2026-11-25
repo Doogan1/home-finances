@@ -57,14 +57,14 @@ describe("calendarMonth", () => {
 
 describe("the calendar's past", () => {
   // The series starts on Nov 14. Before it: two saved days, and a bill due on the 1st.
-  const past = (state: { matched?: string[]; hasBank?: boolean; overrides?: Parameters<typeof occurrencesBetween>[1] } = {}) => ({
+  const past = (state: { matched?: string[]; bankSince?: string | null; overrides?: Parameters<typeof occurrencesBetween>[1] } = {}) => ({
     days: [
       { date: "2026-10-30", closing: 90000n, from: "saved" as const, transactions: [] },
       { date: "2026-11-01", closing: -500n, from: "worked" as const, transactions: [] },
     ],
     items: pastItems(occurrencesBetween([rule()], state.overrides ?? [], "2026-10-01", "2026-11-13"), "spend", "2026-11-14", {
       matched: new Set(state.matched ?? []),
-      hasBank: state.hasBank ?? true,
+      bankSince: state.bankSince === undefined ? "2026-10-01" : state.bankSince,
     }),
   });
 
@@ -89,11 +89,12 @@ describe("the calendar's past", () => {
     const state = (options: Parameters<typeof past>[0]) => [...past(options).items.values()].flat().map((i) => i.past);
     expect(state({ matched: ["r1|2026-11-01"] })).toEqual(["bank"]);
     expect(state({ overrides: [edit({ scheduledOn: "2026-11-01", status: "PAID" })] })).toEqual(["hand"]);
-    expect(state({ hasBank: false })).toEqual(["planned"]);
+    expect(state({ bankSince: null })).toEqual(["planned"]);
+    expect(state({ bankSince: "2026-11-02" })).toEqual(["planned"]);
     expect(state({ overrides: [edit({ scheduledOn: "2026-11-01", status: "SKIPPED" })] })).toEqual([]);
     // A paid date sits on the day the bank shows, and another account's share is not this account's.
     const moved = past({ matched: ["r1|2026-11-01"], overrides: [edit({ scheduledOn: "2026-11-01", status: "PAID", movedTo: "2026-10-30" })] });
     expect([...moved.items.keys()]).toEqual(["2026-10-30"]);
-    expect(pastItems(occurrencesBetween([rule()], [], "2026-10-01", "2026-11-13"), "savings", "2026-11-14", { matched: new Set(), hasBank: true }).size).toBe(0);
+    expect(pastItems(occurrencesBetween([rule()], [], "2026-10-01", "2026-11-13"), "savings", "2026-11-14", { matched: new Set(), bankSince: "2026-10-01" }).size).toBe(0);
   });
 });

@@ -56,6 +56,24 @@ describe("pastDays", () => {
     ]);
   });
 
+  it("carries, rather than works back, across days before the bank's first transaction", () => {
+    const days = pastDays({
+      from: "2026-10-29",
+      to: "2026-11-03",
+      balances: [balance("2026-10-29", 100000n), balance("2026-11-04", 300000n)],
+      transactions: [tx("a", "2026-11-02", -5000n)],
+      bankSince: "2026-11-02",
+    });
+    expect(closings(days)).toEqual([
+      ["2026-10-29", 100000n, "saved"],
+      ["2026-10-30", 100000n, "carried"],
+      ["2026-10-31", 100000n, "carried"],
+      ["2026-11-01", 305000n, "worked"],
+      ["2026-11-02", 300000n, "worked"],
+      ["2026-11-03", 300000n, "worked"],
+    ]);
+  });
+
   it("starts where something is first known, and is empty with no balance or an empty window", () => {
     const one = { balances: [balance("2026-11-14", 100000n)], transactions: [tx("a", "2026-11-12", -1000n)], bankSince: "2026-11-12" };
     expect(pastDays({ from: "2026-10-01", to: "2026-11-13", ...one }).map((d) => d.date)).toEqual(["2026-11-12", "2026-11-13"]);

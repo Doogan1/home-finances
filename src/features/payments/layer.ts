@@ -39,11 +39,13 @@ function grouped(payments: readonly LayerPayment[], key: (p: LayerPayment) => st
 }
 
 /**
- * The edits the forecast should read: each occurrence with a payment is Paid on
- * its latest payment's date. Its amount becomes the payments' sum when they
- * reach every account it is split across and the splits can divide that sum;
- * otherwise the amount stays as it was. Payments for a date the rule does not
- * produce, or with no due date, change nothing here.
+ * The edits the forecast should read. An occurrence whose payments reach every
+ * account it is split across is Paid on its latest payment's date, and its
+ * amount becomes the payments' sum when the splits can divide that sum. Until
+ * then (one deposit of a split paycheck has arrived, the other has not) nothing
+ * changes: an occurrence has one date for all its accounts, so marking it paid
+ * early would drop the share still to come. Payments for a date the rule does
+ * not produce, or with no due date, change nothing here.
  */
 export function layerPayments(
   rules: readonly ForecastRule[],
@@ -61,17 +63,25 @@ export function layerPayments(
     if (!occurrence || !version) continue;
     const key = `${ruleId}|${scheduledOn}`;
     const base = result.get(key) ?? { ruleId, scheduledOn, status: "PLANNED" as const, confirmedAmount: null, movedTo: null };
+    if (!covers(group, fromCents(occurrence.amount), version.allocations)) continue;
     const total = sum(group);
-    const complete = covers(group, fromCents(occurrence.amount), version.allocations) && divides(total, version.allocations);
     const paidOn = latest(group);
     result.set(key, {
       ...base,
       status: "PAID",
-      confirmedAmount: complete ? fromCents(total) : base.confirmedAmount,
+      confirmedAmount: divides(total, version.allocations) ? fromCents(total) : base.confirmedAmount,
       movedTo: paidOn === scheduledOn ? null : paidOn,
     });
   }
   return [...result.values()];
+}
+
+/** True when the payments for `scheduledOn` make the forecast read it as Paid (see layerPayments). */
+export function paidInFull(rule: ForecastRule, overrides: readonly ForecastOverride[], payments: readonly LayerPayment[], scheduledOn: IsoDate): boolean {
+  const group = payments.filter((p) => p.ruleId === rule.id && p.scheduledOn === scheduledOn);
+  const occurrence = group.length > 0 ? occurrenceAt(rule, overrides, scheduledOn) : null;
+  const version = occurrence && rule.versions.find((v) => v.id === occurrence.versionId);
+  return !!occurrence && !!version && covers(group, fromCents(occurrence.amount), version.allocations);
 }
 
 export type PaymentTotal = { date: IsoDate; cents: Cents };

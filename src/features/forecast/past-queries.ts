@@ -50,13 +50,13 @@ export async function loadAccountPast(
     from,
     to,
     balances: balances.flatMap((row) =>
-      row.current === null ? [] : [{ date: snapshotDate(row, options.timeZone), observedAt: row.observedAt, cents: toCents(row.current.toFixed()) }],
+      row.current === null ? [] : [{ date: snapshotDate(row, options.timeZone), observedAt: row.observedAt, cents: toCents(row.current.toDecimalPlaces(2).toFixed()) }],
     ),
     transactions: transactions.map((row) => ({
       id: row.id,
       date: toIsoDate(row.date),
       // The bank reports money leaving as positive.
-      cents: -toCents(row.amount.toFixed()),
+      cents: -toCents(row.amount.toDecimalPlaces(2).toFixed()),
       payee: row.merchantName ?? row.description,
       ruleId: row.payment?.ruleId ?? null,
       ruleName: row.payment?.rule.name ?? null,

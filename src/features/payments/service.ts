@@ -34,6 +34,9 @@ export class PaymentInputError extends Error {
 
 type Scope = { environment: PlaidEnvironment; now?: Date };
 
+/** Another request matched the same transaction first: the unique transaction id refused the second row. */
+const isDuplicate = (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+
 async function today(db: PrismaClient, householdId: string, now?: Date): Promise<IsoDate | null> {
   const { timeZone } = await db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } });
   return timeZone ? todayIn(timeZone, now) : null;
@@ -91,7 +94,8 @@ export async function confirmMatch(
   input: { ruleId: string; scheduledOn: IsoDate | null },
   scope: Scope,
 ): Promise<void> {
-  await db.$transaction(async (tx) => {
+  await db
+    .$transaction(async (tx) => {
     const rule = await lockRule(tx, householdId, input.ruleId).catch(asPaymentError);
     const transaction = await tx.transaction.findFirst({
       where: { id: transactionId, ...matchable(householdId, scope.environment) },
@@ -99,7 +103,7 @@ export async function confirmMatch(
     });
     if (!transaction) throw new PaymentInputError("transaction_not_found");
     if (transaction.payment) throw new PaymentInputError("already_matched");
-    const cents = toCents(transaction.amount.toFixed());
+    const cents = toCents(transaction.amount.toDecimalPlaces(2).toFixed());
     if (cents === 0n || cents > 0n !== (rule.kind === "BILL")) throw new PaymentInputError("wrong_direction");
 
     const forecastRule = { id: input.ruleId, name: "", kind: rule.kind, versions: rule.versions };
@@ -125,14 +129,18 @@ export async function confirmMatch(
         createdByUserId: userId,
       },
     });
-  });
+    })
+    .catch((error: unknown) => {
+      if (isDuplicate(error)) throw new PaymentInputError("already_matched");
+      throw error;
+    });
   // The payee is now known for this rule, so other payments to it may link themselves.
   await runMatchingQuietly(db, householdId, scope);
 }
 
-async function decline(tx: Prisma.TransactionClient, householdId: string, ruleId: string, transactionId: string) {
+async function decline(tx: Prisma.TransactionClient, householdId: string, ruleId: string, transactionId: string, environment: PlaidEnvironment) {
   const transaction = await tx.transaction.findFirst({
-    where: { id: transactionId, account: { householdId } },
+    where: { id: transactionId, account: { householdId, plaidItem: { environment } } },
     select: { merchantName: true, description: true },
   });
   if (!transaction) throw new PaymentInputError("transaction_not_found");
@@ -145,20 +153,23 @@ async function decline(tx: Prisma.TransactionClient, householdId: string, ruleId
 }
 
 /** "No, this is not that bill": the pair is not proposed again, and that payee no longer links itself to the rule. */
-export async function declineMatch(db: PrismaClient, householdId: string, transactionId: string, ruleId: string): Promise<void> {
+export async function declineMatch(db: PrismaClient, householdId: string, transactionId: string, ruleId: string, scope: Scope): Promise<void> {
   await db.$transaction(async (tx) => {
     const rule = await tx.rule.findFirst({ where: { id: ruleId, householdId }, select: { id: true } });
     if (!rule) throw new PaymentInputError("rule_not_found");
-    await decline(tx, householdId, ruleId, transactionId);
+    await decline(tx, householdId, ruleId, transactionId, scope.environment);
   });
 }
 
 /** Undo a match. The pair is remembered as declined, so the matcher does not put it straight back. */
-export async function undoMatch(db: PrismaClient, householdId: string, transactionId: string): Promise<void> {
+export async function undoMatch(db: PrismaClient, householdId: string, transactionId: string, scope: Scope): Promise<void> {
   await db.$transaction(async (tx) => {
-    const payment = await tx.payment.findFirst({ where: { transactionId, householdId }, select: { id: true, ruleId: true } });
+    const payment = await tx.payment.findFirst({
+      where: { transactionId, householdId, transaction: { account: { householdId, plaidItem: { environment: scope.environment } } } },
+      select: { id: true, ruleId: true },
+    });
     if (!payment) throw new PaymentInputError("not_matched");
     await tx.payment.delete({ where: { id: payment.id } });
-    await decline(tx, householdId, payment.ruleId, transactionId);
+    await decline(tx, householdId, payment.ruleId, transactionId, scope.environment);
   });
 }

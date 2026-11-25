@@ -1,3 +1,4 @@
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { declineMatchInput, paymentErrorResponse, transactionTarget, type TransactionContext } from "@/features/payments/http";
 import { declineMatch } from "@/features/payments/service";
 import { authorizeMutation } from "@/lib/auth/household";
@@ -15,7 +16,7 @@ export async function POST(request: Request, context: TransactionContext) {
   if (!body) return badRequest();
   const { householdId } = authorization.context;
   try {
-    await declineMatch(getDb(), householdId, transactionId, body.ruleId);
+    await declineMatch(getDb(), householdId, transactionId, body.ruleId, { environment: getPlaidEnvironment() });
     return jsonNoStore({ ok: true });
   } catch (error) {
     return paymentErrorResponse(error, "transactions.decline");

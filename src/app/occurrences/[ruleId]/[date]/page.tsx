@@ -12,7 +12,8 @@ import { STATUS_LABELS } from "@/components/forecast/status";
 import { isCashAccount } from "@/features/forecast/engine";
 import { occurrenceAt } from "@/features/forecast/occurrences";
 import { loadHouseholdForecast } from "@/features/forecast/page-data";
-import { listPayments } from "@/features/payments/queries";
+import { paidInFull } from "@/features/payments/layer";
+import { listPayments, toLayerPayment } from "@/features/payments/queries";
 import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { accountLookup, listOverrides } from "@/features/rules/queries";
 import { formatIsoDate } from "@/features/rules/summary";
@@ -53,6 +54,12 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
     listPayments(db, householdId, { environment: getPlaidEnvironment() }, ruleId),
   ]);
   const payments = rulePayments.filter((p) => p.scheduledOn === date);
+  const settled = paidInFull(
+    rule,
+    edits.map((e) => ({ ...e, ruleId })),
+    payments.map(toLayerPayment),
+    date,
+  );
   const edit = edits.find((e) => e.scheduledOn === date) ?? null;
   const occurrence = occurrenceAt(rule, data.input.overrides, date);
   if (!occurrence && !edit) notFound();
@@ -99,9 +106,13 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
         <span className={occurrence.estimate ? "estimate" : undefined}>{money(occurrence.amount)}</span>
         {occurrence.estimate ? " (estimate)" : " (confirmed)"} · {shares.join(" · ")}
       </p>
-      {payments.length > 0 ? (
+      {payments.length > 0 && (
         <section className="notice notice-ok" aria-label="Payments">
-          <p>The bank shows this paid, so the forecast uses the real amount and day:</p>
+          <p>
+            {settled
+              ? "The bank shows this paid, so the forecast uses the real amount and day:"
+              : "Part of this has arrived. The forecast keeps the plan until every account it goes to has its payment:"}
+          </p>
           <ul>
             {payments.map((p) => (
               <li key={p.id}>
@@ -111,9 +122,10 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
               </li>
             ))}
           </ul>
-          <p className="muted">To change this date by hand, undo the match first. Your own edit, if you made one, comes back.</p>
+          {settled && <p className="muted">To change this date by hand, undo the match first. Your own edit, if you made one, comes back.</p>}
         </section>
-      ) : (
+      )}
+      {!settled && (
         <OccurrenceForm
           ruleId={rule.id}
           scheduledOn={date}

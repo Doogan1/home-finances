@@ -133,7 +133,7 @@ describe("matching bank transactions to bills", () => {
     // The person's own edit is untouched underneath.
     expect(await owner.occurrenceOverride.findFirstOrThrow({ where: { ruleId: electric } })).toMatchObject({ status: "CONFIRMED", note: "mine" });
 
-    await undoMatch(app, householdId, paid);
+    await undoMatch(app, householdId, paid, SCOPE);
     expect(await occurrence()).toMatchObject({ status: "CONFIRMED", estimate: false, amount: 10500n, date: "2026-12-10" });
     // Undone means declined: it is not proposed or linked again.
     expect(await questions()).toEqual([]);
@@ -167,11 +167,11 @@ describe("matching bank transactions to bills", () => {
     await confirm(first, "2026-11-10");
     const odd = await bankTransaction({ date: "2026-12-09", amount: "100", description: "CITY ELECTRIC WEB PMT" });
     expect(await runMatching(app, householdId, SCOPE)).toEqual({ linked: 1 });
-    await undoMatch(app, householdId, odd);
+    await undoMatch(app, householdId, odd, SCOPE);
     const later = await bankTransaction({ date: "2027-01-09", amount: "100", description: "CITY ELECTRIC WEB PMT" });
     expect(await runMatching(app, householdId, SCOPE)).toEqual({ linked: 0 });
     expect((await questions()).map((q) => q.transactionId)).toEqual([later]);
-    await declineMatch(app, householdId, later, electric);
+    await declineMatch(app, householdId, later, electric, SCOPE);
     expect(await questions()).toEqual([]);
   });
 
@@ -190,16 +190,23 @@ describe("matching bank transactions to bills", () => {
     expect(await code(confirm(await bankTransaction({ date: "2026-12-10", amount: "-100", description: "REFUND" }), "2026-12-10"))).toBe("wrong_direction");
     expect(await code(confirm(await bankTransaction({ date: "2026-12-10", amount: "100", description: "X", accountId: savings }), "2026-12-10"))).toBe("wrong_account");
     expect(await code(confirm(await bankTransaction({ date: "2026-12-10", amount: "100", description: "X", pending: true }), "2026-12-10"))).toBe("transaction_not_found");
-    expect(await code(undoMatch(app, householdId, mine))).toBe("not_matched");
-    expect(await code(declineMatch(app, householdId, theirs, electric))).toBe("transaction_not_found");
-    expect(await code(declineMatch(app, other.householdId, mine, electric))).toBe("rule_not_found");
+    expect(await code(undoMatch(app, householdId, mine, SCOPE))).toBe("not_matched");
+    expect(await code(declineMatch(app, householdId, theirs, electric, SCOPE))).toBe("transaction_not_found");
+    expect(await code(declineMatch(app, other.householdId, mine, electric, SCOPE))).toBe("rule_not_found");
 
     await confirm(mine, "2026-12-10");
     expect(await code(confirm(mine, "2026-12-10"))).toBe("already_matched");
-    expect(await code(undoMatch(app, other.householdId, mine))).toBe("not_matched");
+    // Two answers at once for one transaction: one wins, the other is told it is already matched.
+    const raced = await bankTransaction({ date: "2026-11-10", amount: "100", description: "CITY ELECTRIC" });
+    const both = await Promise.all([code(confirm(raced, "2026-11-10")), code(confirm(raced, "2026-11-10"))]);
+    expect(both.sort()).toEqual(["already_matched", "ok"]);
+    // Sandbox and live data never mix: the same ids under the other environment are not found.
+    expect(await code(undoMatch(app, householdId, mine, { environment: "PRODUCTION" }))).toBe("not_matched");
+    expect(await code(declineMatch(app, householdId, mine, electric, { environment: "PRODUCTION" }))).toBe("transaction_not_found");
+    expect(await code(undoMatch(app, other.householdId, mine, SCOPE))).toBe("not_matched");
     await owner.rule.update({ where: { id: electric }, data: { archivedAt: NOW } });
     expect(await code(confirm(await bankTransaction({ date: "2026-12-10", amount: "100", description: "Y" }), "2026-12-10"))).toBe("rule_archived");
-    expect(await owner.payment.count()).toBe(1);
+    expect(await owner.payment.count()).toBe(2);
   });
 
   it("loses a transaction's match when the transaction itself is deleted", async () => {

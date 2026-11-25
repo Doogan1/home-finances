@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { occurrencesBetween } from "@/features/forecast/occurrences";
 import { paymentHistory, type HistoryPayment } from "@/features/payments/history";
-import { layerPayments, paymentTotals, typicalAmount, usableTypical, type LayerPayment } from "@/features/payments/layer";
+import { paidInFull, layerPayments, paymentTotals, typicalAmount, usableTypical, type LayerPayment } from "@/features/payments/layer";
 import { edit, rule, version } from "./helpers/forecast-fixtures";
 
 // Monthly on the 1st from Nov 1, 2026, $100 from "spend". Every figure is made up.
@@ -48,11 +48,15 @@ describe("layerPayments", () => {
     expect(layerPayments([rule()], [mine, other], [])).toEqual([mine, other]);
   });
 
-  it("keeps the amount as it was until every account of a split has its payment", () => {
-    const toSpend = paid({ ruleId: "pay", accountId: "spend", cents: 70000n, date: "2026-12-01" });
-    expect(layerPayments([paycheck], [], [toSpend])[0]).toMatchObject({ status: "PAID", confirmedAmount: null });
+  it("changes nothing until every account of a split has its payment", () => {
+    const toSpend = paid({ ruleId: "pay", accountId: "spend", cents: 70000n, date: "2026-11-29" });
+    const mine = edit({ ruleId: "pay", scheduledOn: "2026-12-01", status: "CONFIRMED", confirmedAmount: "1000" });
+    expect(layerPayments([paycheck], [], [toSpend])).toEqual([]);
+    expect(layerPayments([paycheck], [mine], [toSpend])).toEqual([mine]);
+    expect(paidInFull(paycheck, [], [toSpend], "2026-12-01")).toBe(false);
     const toSavings = paid({ ruleId: "pay", accountId: "savings", cents: 32000n, date: "2026-12-02" });
-    expect(layerPayments([paycheck], [], [toSpend, toSavings])[0]).toMatchObject({ confirmedAmount: "1020.00", movedTo: "2026-12-02" });
+    expect(layerPayments([paycheck], [], [toSpend, toSavings])[0]).toMatchObject({ status: "PAID", confirmedAmount: "1020.00", movedTo: "2026-12-02" });
+    expect(paidInFull(paycheck, [], [toSpend, toSavings], "2026-12-01")).toBe(true);
   });
 
   it("keeps the amount as it was when the splits cannot divide what was paid", () => {
@@ -153,5 +157,13 @@ describe("paymentHistory", () => {
     const early = bank({ scheduledOn: "2027-01-01", date: "2026-12-12" });
     expect(paymentHistory(varies, [], [], "2026-11-15", "2026-12-14").map((r) => [r.scheduledOn, r.planned])).toEqual([["2026-12-01", 10000n]]);
     expect(paymentHistory(varies, [], [early], "2026-11-15", "2026-12-14").map((r) => r.scheduledOn)).toEqual(["2027-01-01", "2026-12-01"]);
+  });
+});
+
+describe("a payment whose due date is gone", () => {
+  it("stays in the bill's past, marked, when the schedule no longer has that date", () => {
+    const stranded: HistoryPayment = { transactionId: "t9", scheduledOn: "2026-11-15", date: "2026-11-14", cents: 10000n, payee: "City Power", source: "PERSON" };
+    const rows = paymentHistory(rule(), [], [stranded], "2026-11-01", "2026-12-14");
+    expect(rows.find((r) => r.payments.length > 0)).toMatchObject({ scheduledOn: null, stranded: "2026-11-15", paid: 10000n });
   });
 });

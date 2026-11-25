@@ -10,8 +10,10 @@ import type { Cents } from "@/lib/cents";
 
 export type HistoryPayment = { transactionId: string; scheduledOn: IsoDate | null; date: IsoDate; cents: Cents; payee: string; source: "AUTO" | "PERSON" };
 export type HistoryRow = {
-  /** Null for payments with no due date (from before the rule's first date). */
+  /** Null for payments with no due date (from before the rule's first date), or whose due date is gone. */
   scheduledOn: IsoDate | null;
+  /** Set when the payment was matched to a date the rule no longer produces: it pays nothing until it is rematched. */
+  stranded?: IsoDate;
   /** When it happened, or was due: what the rows are ordered by. */
   date: IsoDate;
   /** What was planned for the date: the person's confirmed amount, or the version's. */
@@ -63,8 +65,17 @@ export function paymentHistory(
       },
     ];
   });
+  const produced = new Set(occurrencesBetween([{ ...rule, typical: undefined }], [], paidDates[0] ?? from, to).map((o) => o.scheduledOn));
   const loose: HistoryRow[] = payments
-    .filter((p) => p.scheduledOn === null && p.date >= from)
-    .map((p) => ({ scheduledOn: null, date: p.date, planned: null, status: null, payments: [p], paid: p.cents }));
+    .filter((p) => (p.scheduledOn === null && p.date >= from) || (p.scheduledOn !== null && !produced.has(p.scheduledOn)))
+    .map((p) => ({
+      scheduledOn: null,
+      date: p.date,
+      planned: null,
+      status: null,
+      payments: [p],
+      paid: p.cents,
+      ...(p.scheduledOn === null ? {} : { stranded: p.scheduledOn }),
+    }));
   return [...due, ...loose].sort((a, b) => b.date.localeCompare(a.date) || (b.scheduledOn ?? "").localeCompare(a.scheduledOn ?? ""));
 }

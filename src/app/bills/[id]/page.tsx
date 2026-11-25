@@ -298,6 +298,7 @@ function againstPlan(row: HistoryRow): string {
     if (row.status === "SKIPPED") return "Skipped";
     return `No payment matched (planned ${row.planned === null ? "" : money(row.planned)})`;
   }
+  if (row.stranded) return `Matched to ${formatIsoDate(row.stranded)}, a date this no longer has. Undo the match and match it again.`;
   if (row.planned === null) return "From before its first date";
   const gap = row.paid - row.planned;
   return gap === 0n ? "As planned" : `${signedMoney(gap)} against ${money(row.planned)}`;

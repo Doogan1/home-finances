@@ -54,7 +54,7 @@ async function MonthView({ searchParams }: { searchParams: SearchParams }) {
         ? new Map<string, CalendarItem[]>()
         : pastItems(occurrencesBetween(data.input.rules, data.input.overrides, earliest, addDays(firstDay, -1)), selected.account.id, firstDay, {
             matched: new Set(payments.map((p) => `${p.ruleId}|${p.scheduledOn}`)),
-            hasBank: pastDays.some((day) => day.from === "worked" || day.transactions.length > 0),
+            bankSince: pastDays.find((day) => day.from === "worked" || day.transactions.length > 0)?.date ?? null,
           }),
   };
   const month = chooseMonth(selected, requested, data.today, earliest);

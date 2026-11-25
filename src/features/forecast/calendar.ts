@@ -62,7 +62,8 @@ export function pastItems(
   occurrences: readonly ComputedOccurrence[],
   accountId: string,
   before: IsoDate,
-  options: { matched: ReadonlySet<string>; hasBank: boolean },
+  /** `bankSince`: the first day the account has bank transactions for; null for one kept by hand. */
+  options: { matched: ReadonlySet<string>; bankSince: IsoDate | null },
 ): Map<IsoDate, CalendarItem[]> {
   const items = new Map<IsoDate, CalendarItem[]>();
   for (const occurrence of occurrences) {
@@ -73,7 +74,7 @@ export function pastItems(
       ? "bank"
       : occurrence.status === "PAID"
         ? "hand"
-        : options.hasBank
+        : options.bankSince !== null && occurrence.date >= options.bankSince
           ? "unpaid"
           : "planned";
     const cents = occurrence.kind === "INCOME" ? share.cents : -share.cents;

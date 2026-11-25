@@ -53,8 +53,11 @@ export type PaymentView = {
   payeeKey: string;
 };
 
-const unsigned = (amount: { toFixed(): string }): Cents => {
-  const cents = toCents(amount.toFixed());
+/** A bank amount as a decimal string in whole cents (a stray third decimal is rounded, never an error). */
+const decimal = (amount: Prisma.Decimal) => amount.toDecimalPlaces(2).toFixed();
+
+const unsigned = (amount: Prisma.Decimal): Cents => {
+  const cents = toCents(decimal(amount));
   return cents < 0n ? -cents : cents;
 };
 
@@ -62,7 +65,7 @@ const toMatchTransaction = (row: TransactionRow): MatchTransaction => ({
   id: row.id,
   accountId: row.accountId,
   date: toIsoDate(row.date),
-  amount: row.amount.toFixed(),
+  amount: decimal(row.amount),
   payeeKey: payeeKey(row.merchantName, row.description),
 });
 
@@ -132,7 +135,10 @@ export async function loadMatchState(
     listRules(db, householdId),
     listHouseholdOverrides(db, householdId),
     listPayments(db, householdId, options),
-    db.matchDecline.findMany({ where: { householdId }, select: { ruleId: true, transactionId: true, payeeKey: true } }),
+    db.matchDecline.findMany({
+      where: { householdId, transaction: { account: { householdId, plaidItem: { environment: options.environment } } } },
+      select: { ruleId: true, transactionId: true, payeeKey: true },
+    }),
     db.transaction.findMany({
       where: { ...matchable(householdId, options.environment), payment: null, date: since },
       select: { ...transactionFields, account: { select: { name: true } } },
@@ -252,7 +258,7 @@ export async function loadTransactionMatch(
     payee: row.merchantName ?? row.description,
     description: row.description,
     accountName: row.account.name,
-    amount: row.amount.toFixed(),
+    amount: decimal(row.amount),
     currency: row.currency,
     pending: row.pending,
   };

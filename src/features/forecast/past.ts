@@ -53,7 +53,6 @@ export function pastDays(input: PastInput): PastDay[] {
   const byDate = new Map<IsoDate, PastTransaction[]>();
   for (const transaction of input.transactions) byDate.set(transaction.date, [...(byDate.get(transaction.date) ?? []), transaction]);
   const net = (date: IsoDate) => (byDate.get(date) ?? []).reduce((sum, t) => sum + t.cents, 0n);
-  const hasBank = input.bankSince !== null;
   // Nothing is known before the first balance or (with a bank) the first transaction.
   const known = input.bankSince !== null && input.bankSince < dates[0] ? input.bankSince : dates[0];
   const start = known > input.from ? known : input.from;
@@ -65,7 +64,8 @@ export function pastDays(input: PastInput): PastDay[] {
     const here = saved.get(date);
     let day: Pick<PastDay, "closing" | "from"> | null = null;
     if (here) day = { closing: here.cents, from: "saved" };
-    else if (hasBank && next !== null) day = { closing: next - net(addDays(date, 1)), from: "worked" };
+    // Working back needs the next day's transactions, which are only known from the bank's first one on.
+    else if (input.bankSince !== null && next !== null && addDays(date, 1) >= input.bankSince) day = { closing: next - net(addDays(date, 1)), from: "worked" };
     else {
       const earlier = dates.filter((d) => d < date).pop();
       if (earlier !== undefined) day = { closing: (saved.get(earlier) as PastBalance).cents, from: "carried" };

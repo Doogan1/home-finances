@@ -1,3 +1,4 @@
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { undoMatchInput, paymentErrorResponse, transactionTarget, type TransactionContext } from "@/features/payments/http";
 import { undoMatch } from "@/features/payments/service";
 import { authorizeMutation } from "@/lib/auth/household";
@@ -15,7 +16,7 @@ export async function POST(request: Request, context: TransactionContext) {
   if (!body) return badRequest();
   const { householdId } = authorization.context;
   try {
-    await undoMatch(getDb(), householdId, transactionId);
+    await undoMatch(getDb(), householdId, transactionId, { environment: getPlaidEnvironment() });
     return jsonNoStore({ ok: true });
   } catch (error) {
     return paymentErrorResponse(error, "transactions.unmatch");

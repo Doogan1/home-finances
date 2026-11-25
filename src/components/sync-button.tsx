@@ -10,6 +10,7 @@ type Summary = {
   removed: number;
   errorCode: string | null;
   providerStatus: string | null;
+  matched?: number;
 };
 type Notice = { tone: "ok" | "warn" | "error"; text: string };
 
@@ -43,7 +44,9 @@ export function SyncButton({ connectionId }: { connectionId: string }) {
       } else {
         setNotice({
           tone: "ok",
-          text: `Synced: ${body.added ?? 0} new, ${body.modified ?? 0} changed, ${body.removed ?? 0} removed.`,
+          text:
+            `Synced: ${body.added ?? 0} new, ${body.modified ?? 0} changed, ${body.removed ?? 0} removed.` +
+            (body.matched ? ` Matched ${body.matched} to bills and income.` : ""),
         });
       }
     } catch {

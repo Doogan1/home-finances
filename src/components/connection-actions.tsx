@@ -64,7 +64,8 @@ export function ConnectionActions({
               {savedAccounts > 0
                 ? `its ${savedAccounts} saved ${savedAccounts === 1 ? "account" : "accounts"}, every balance recorded for them`
                 : "every balance recorded for its accounts"}{" "}
-              and any saved transactions. It cannot be undone. Your other connections are not affected.
+              and any saved transactions. Bills those transactions were matched to lose those payments from their history. It
+              cannot be undone. Your other connections are not affected.
             </p>
             {attachedNames.length > 0 && (
               <p>

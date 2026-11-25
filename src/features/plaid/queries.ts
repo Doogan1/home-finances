@@ -61,7 +61,8 @@ export function listRecentTransactions(
   return db.transaction.findMany({
     where: { removedAt: null, account: { householdId, plaidItem: { environment } } },
     include: {
-      account: { select: { name: true, mask: true, plaidItem: { select: { institutionName: true } } } },
+      account: { select: { name: true, mask: true, attachedAt: true, plaidItem: { select: { institutionName: true } } } },
+      payment: { select: { ruleId: true, source: true, rule: { select: { name: true } } } },
     },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take,

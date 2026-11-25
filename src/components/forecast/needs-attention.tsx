@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ESTIMATE_DAYS, attentionCount, type Attention, type LowBalance } from "@/features/forecast/attention";
+import type { MatchQuestion } from "@/features/payments/queries";
 import { formatIsoDate } from "@/features/rules/summary";
+import { MatchQuestionItem, matchKey } from "../payments/match-question";
 import { ClearQuestionItem, clearKey } from "./did-it-clear";
 import { money } from "./money";
 import { occurrenceHref } from "./occurrence-link";
@@ -14,10 +16,33 @@ function describeLow(low: LowBalance): string {
   return `${low.account.name} goes ${parts.join(" and ")}; lowest ${money(low.lowest.cents)} on ${formatIsoDate(low.lowest.date)}.`;
 }
 
-export function NeedsAttention({ attention }: { attention: Attention }) {
-  if (attentionCount(attention) === 0) return <p className="muted">Nothing needs attention.</p>;
+/** Home asks about this many payments; the rest wait on Transactions. */
+const QUESTIONS_SHOWN = 5;
+
+export type PaymentsDiffer = { ruleId: string; ruleName: string; planned: string; typical: string; count: number };
+
+export function NeedsAttention({
+  attention,
+  questions = [],
+  differ = [],
+}: {
+  attention: Attention;
+  questions?: readonly MatchQuestion[];
+  differ?: readonly PaymentsDiffer[];
+}) {
+  if (attentionCount(attention) + questions.length + differ.length === 0) return <p className="muted">Nothing needs attention.</p>;
   return (
     <ul className="attention">
+      {questions.slice(0, QUESTIONS_SHOWN).map((q) => (
+        <MatchQuestionItem key={matchKey(q)} question={q} />
+      ))}
+      {questions.length > QUESTIONS_SHOWN && (
+        <li key="more-questions">
+          <Link href="/transactions">
+            {questions.length - QUESTIONS_SHOWN} more {questions.length - QUESTIONS_SHOWN === 1 ? "payment" : "payments"} to confirm
+          </Link>
+        </li>
+      )}
       {attention.needsBalance.map((account) => (
         <li key={`balance-${account.id}`}>
           {account.name} needs a balance before it can be forecast. <Link href="/accounts/balances">Update balances</Link>
@@ -49,6 +74,12 @@ export function NeedsAttention({ attention }: { attention: Attention }) {
       )}
       {attention.didItClear.map((q) => (
         <ClearQuestionItem key={clearKey(q)} question={q} back="/" />
+      ))}
+      {differ.map((d) => (
+        <li key={`differ-${d.ruleId}`}>
+          <Link href={`/bills/${d.ruleId}`}>{d.ruleName}</Link> is planned at {d.planned}, but its last {d.count} payments were typically{" "}
+          {d.typical}. Change its amount, or set it to vary.
+        </li>
       ))}
       {attention.orphanEdits.map((e) => (
         <li key={`orphan-${e.ruleId}-${e.scheduledOn}`}>

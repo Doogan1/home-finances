@@ -1,8 +1,9 @@
 import "server-only";
 import type { PlaidEnvironment, Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { ForecastOverride } from "@/features/forecast/occurrences";
+import { occurrencesBetween, type ForecastOverride } from "@/features/forecast/occurrences";
 import { listHouseholdOverrides, listRules, type RuleView } from "@/features/rules/queries";
-import { toIsoDate, type IsoDate } from "@/lib/calendar-date";
+import { splitAmount } from "@/features/rules/splits";
+import { addDays, daysBetween, toIsoDate, type IsoDate } from "@/lib/calendar-date";
 import { fromCents, toCents, type Cents } from "@/lib/cents";
 import { usableTypical, type LayerPayment } from "./layer";
 import { proposeMatches, type MatchRule, type MatchTransaction, type Proposal } from "./match";
@@ -168,13 +169,8 @@ export type MatchQuestion = {
   scheduledOn: IsoDate | null;
 };
 
-/** "Is this that bill?": what the matcher proposes for recent transactions, newest first. */
-export async function listMatchQuestions(
-  db: Db,
-  householdId: string,
-  options: Scope & { today: IsoDate; since: IsoDate },
-): Promise<MatchQuestion[]> {
-  const state = await loadMatchState(db, householdId, options);
+/** "Is this that bill?": what the matcher proposes, newest first. */
+export function matchQuestions(state: MatchState): MatchQuestion[] {
   const rules = new Map(state.rules.map((r) => [r.id, r]));
   return state.proposals
     .flatMap((proposal) => {
@@ -196,4 +192,105 @@ export async function listMatchQuestions(
       ];
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.ruleName.localeCompare(b.ruleName));
+}
+
+/** matchQuestions for recent transactions (those dated `since` or later). */
+export async function listMatchQuestions(
+  db: Db,
+  householdId: string,
+  options: Scope & { today: IsoDate; since: IsoDate },
+): Promise<MatchQuestion[]> {
+  return matchQuestions(await loadMatchState(db, householdId, options));
+}
+
+/** How far either side of a transaction's date the person may pick a due date from. */
+export const CHOICE_WINDOW_DAYS = 45;
+
+export type TransactionMatch = {
+  transaction: {
+    id: string;
+    date: IsoDate;
+    payee: string;
+    description: string;
+    accountName: string;
+    /** As the bank reports it: positive is money leaving. */
+    amount: string;
+    currency: string;
+    pending: boolean;
+  };
+  /** False for a pending transaction, or one in an account that only comes from a bank. */
+  canMatch: boolean;
+  payment: { ruleId: string; ruleName: string; scheduledOn: IsoDate | null; source: "AUTO" | "PERSON" } | null;
+  /** What the matcher would propose, if anything. */
+  suggested: { ruleId: string; scheduledOn: IsoDate | null } | null;
+  /** Every rule this transaction could belong to, with the due dates near it. */
+  choices: { ruleId: string; name: string; dates: { scheduledOn: IsoDate; date: IsoDate; paid: boolean }[] }[];
+};
+
+/** One transaction, with everything its page needs to match it, change its match or undo it. */
+export async function loadTransactionMatch(
+  db: PrismaClient,
+  householdId: string,
+  transactionId: string,
+  options: Scope & { today: IsoDate | null },
+): Promise<TransactionMatch | null> {
+  const row = await db.transaction.findFirst({
+    where: { id: transactionId, removedAt: null, account: { householdId, plaidItem: { environment: options.environment } } },
+    select: {
+      ...transactionFields,
+      pending: true,
+      account: { select: { name: true, attachedAt: true } },
+      payment: { select: { ruleId: true, scheduledOn: true, source: true, rule: { select: { name: true } } } },
+    },
+  });
+  if (!row) return null;
+  const date = toIsoDate(row.date);
+  const canMatch = !row.pending && row.account.attachedAt !== null;
+  const transaction = {
+    id: row.id,
+    date,
+    payee: row.merchantName ?? row.description,
+    description: row.description,
+    accountName: row.account.name,
+    amount: row.amount.toFixed(),
+    currency: row.currency,
+    pending: row.pending,
+  };
+  const payment = row.payment && {
+    ruleId: row.payment.ruleId,
+    ruleName: row.payment.rule.name,
+    scheduledOn: row.payment.scheduledOn ? toIsoDate(row.payment.scheduledOn) : null,
+    source: row.payment.source,
+  };
+  if (!canMatch || payment) return { transaction, canMatch, payment, suggested: null, choices: [] };
+
+  const state = await loadMatchState(db, householdId, { ...options, since: date });
+  const proposal = state.proposals.find((p) => p.transactionId === row.id);
+  const cents = toCents(transaction.amount);
+  const kind = cents > 0n ? "BILL" : "INCOME";
+  const paid = new Set(state.payments.filter((p) => p.accountId === row.accountId).map((p) => `${p.ruleId}|${p.scheduledOn}`));
+  const usesAccount = (shares: { accountId: string; cents: Cents }[]) => shares.some((s) => s.accountId === row.accountId && s.cents > 0n);
+  const choices = state.rules
+    .filter((rule) => rule.kind === kind && cents !== 0n)
+    .flatMap((rule) => {
+      const dates = occurrencesBetween(
+        [rule],
+        state.overrides.filter((o) => o.ruleId === rule.id),
+        addDays(date, -CHOICE_WINDOW_DAYS),
+        addDays(date, CHOICE_WINDOW_DAYS),
+      )
+        .filter((o) => usesAccount(o.shares))
+        .map((o) => ({ scheduledOn: o.scheduledOn, date: o.date, paid: paid.has(`${rule.id}|${o.scheduledOn}`) }))
+        // Nearest first, so the likeliest date is the one already chosen.
+        .sort((a, b) => Math.abs(daysBetween(a.date, date)) - Math.abs(daysBetween(b.date, date)) || a.date.localeCompare(b.date));
+      const ever = rule.versions.some((v) => usesAccount(splitAmount(toCents(v.amount), v.allocations)));
+      return ever ? [{ ruleId: rule.id, name: rule.name, dates }] : [];
+    });
+  return {
+    transaction,
+    canMatch,
+    payment,
+    suggested: proposal ? { ruleId: proposal.ruleId, scheduledOn: proposal.scheduledOn } : null,
+    choices,
+  };
 }

@@ -4,9 +4,11 @@ import { BalanceChart } from "@/components/forecast/balance-chart";
 import { NeedsTimeZone, NoForecastAccount } from "@/components/forecast/forecast-notices";
 import { ForecastStats } from "@/components/forecast/forecast-stats";
 import { NeedsAttention } from "@/components/forecast/needs-attention";
+import { money } from "@/components/forecast/money";
 import { NextDays } from "@/components/forecast/next-days";
 import { needsAttention, upcoming } from "@/features/forecast/attention";
 import { chooseSeries, loadHouseholdForecast } from "@/features/forecast/page-data";
+import { loadPaymentAttention } from "@/features/payments/page-data";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
 import { getDb } from "@/lib/db";
 
@@ -52,6 +54,14 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
   const data = await loadHouseholdForecast(householdId);
   if (!data.ready) return <NeedsTimeZone />;
   const selected = chooseSeries(data.charted, chosen);
+  const payments = await loadPaymentAttention(householdId, data.today);
+  const differ = payments.differ.map((d) => ({
+    ruleId: d.ruleId,
+    ruleName: d.ruleName,
+    planned: money(d.planned),
+    typical: money(d.typical.cents),
+    count: d.typical.count,
+  }));
 
   return (
     <>
@@ -72,7 +82,7 @@ async function Overview({ householdId, chosen }: { householdId: string; chosen: 
       <div className="split">
         <section aria-labelledby="attention-heading" className="panel">
           <h2 id="attention-heading">Needs attention</h2>
-          <NeedsAttention attention={needsAttention(data.forecast, data.input)} />
+          <NeedsAttention attention={needsAttention(data.forecast, data.input)} questions={payments.questions} differ={differ} />
         </section>
         <section aria-labelledby="next-heading" className="panel">
           <h2 id="next-heading">Next 7 days</h2>

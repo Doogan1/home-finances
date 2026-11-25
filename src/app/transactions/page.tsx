@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { MatchQuestionItem, matchKey } from "@/components/payments/match-question";
 import { SyncButton } from "@/components/sync-button";
+import { loadPaymentAttention } from "@/features/payments/page-data";
 import { getPlaidEnvironment, isPlaidConfigured } from "@/features/plaid/environment";
 import { describeSync, formatDate, formatMoney, maskAccount } from "@/features/plaid/format";
 import { listRecentTransactions, listSyncStatus } from "@/features/plaid/queries";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
+import { todayIn } from "@/lib/calendar-date";
 import { getDb } from "@/lib/db";
 
 export const metadata: Metadata = { title: "Transactions · Home Finances" };
@@ -27,10 +30,12 @@ async function Transactions() {
   const { householdId } = await requireHouseholdOrRedirect();
   const environment = getPlaidEnvironment();
   const db = getDb();
-  const [connections, transactions] = await Promise.all([
+  const [connections, transactions, household] = await Promise.all([
     listSyncStatus(db, householdId, environment),
     listRecentTransactions(db, householdId, environment, SHOWN),
+    db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } }),
   ]);
+  const questions = household.timeZone ? (await loadPaymentAttention(householdId, todayIn(household.timeZone))).questions : [];
   const now = new Date();
   const plaidConfigured = isPlaidConfigured();
 
@@ -76,6 +81,21 @@ async function Transactions() {
         </ul>
       )}
 
+      {questions.length > 0 && (
+        <section aria-labelledby="match-heading">
+          <h2 id="match-heading">Payments to confirm</h2>
+          <p className="muted">
+            These look like payments of your bills or income. <strong>Yes</strong> marks that date paid with the real amount and
+            day; after that, the same payee is matched for you when the fit is clear.
+          </p>
+          <ul className="attention panel" aria-label="Payments to confirm">
+            {questions.map((q) => (
+              <MatchQuestionItem key={matchKey(q)} question={q} />
+            ))}
+          </ul>
+        </section>
+      )}
+
       <h2>Recent transactions</h2>
       {transactions.length === 0 ? (
         <p className="muted">No transactions saved yet.</p>
@@ -93,6 +113,7 @@ async function Transactions() {
                   <th>Date</th>
                   <th>Description</th>
                   <th>Account</th>
+                  <th>Bill or income</th>
                   <th className="num">Amount</th>
                 </tr>
               </thead>
@@ -105,11 +126,19 @@ async function Transactions() {
                         <time dateTime={t.date.toISOString().slice(0, 10)}>{formatDate(t.date)}</time>
                       </td>
                       <td className="c-main">
-                        {t.merchantName ?? t.description}
+                        <Link href={`/transactions/${t.id}`}>{t.merchantName ?? t.description}</Link>
                         {t.pending && <span className="chip chip-warn">Pending</span>}
                       </td>
                       <td className="c-sub2">
                         {t.account.name} {maskAccount(t.account.mask)}
+                      </td>
+                      <td className="c-note">
+                        {t.payment && (
+                          <>
+                            <Link href={`/bills/${t.payment.ruleId}`}>{t.payment.rule.name}</Link>
+                            {t.payment.source === "AUTO" && <span className="chip chip-muted">Auto</span>}
+                          </>
+                        )}
                       </td>
                       <td className={outgoing ? "num c-amt" : "num c-amt money-in"}>
                         {formatMoney(t.amount.abs().toFixed(), t.currency)}{" "}

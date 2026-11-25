@@ -13,6 +13,8 @@ import { createHouseholdWithOwner } from "./lib/users.mjs";
  *   tsx scripts/e2e-user.mts delete <email>
  *   tsx scripts/e2e-user.mts reset-throttle
  *   tsx scripts/e2e-user.mts seed-bank <email>   -> synthetic connections with fake accounts
+ *   tsx scripts/e2e-user.mts seed-payments <email> <today>   -> an attached account with payments to match;
+ *                                                               prints {"accountId"} as JSON
  *
  * The password is random per run and exists only in the test process.
  */
@@ -75,7 +77,7 @@ const SEEDED_CONNECTIONS: {
 ];
 
 async function main() {
-  const [command, argument] = process.argv.slice(2);
+  const [command, argument, extra] = process.argv.slice(2);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, max: 1 }) });
@@ -190,6 +192,64 @@ async function main() {
           await db.plaidItem.update({ where: { id: item.id }, data: { lastSuccessfulSyncAt: finished } });
         }
       }
+    } else if (command === "seed-payments" && argument && EMAIL_PATTERN.test(argument) && extra && /^\d{4}-\d{2}-\d{2}$/.test(extra)) {
+      const user = await db.user.findUniqueOrThrow({
+        where: { email: argument },
+        include: { memberships: { include: { household: true } } },
+      });
+      const household = user.memberships.map((m) => m.household).find((h) => h.name.startsWith(HOUSEHOLD_PREFIX));
+      if (!household) throw new Error("Refusing to seed a household that is not an E2E household");
+
+      // One of the person's own accounts with a bank attached, and a lawn
+      // service paid from it about weekly. Dates count back from the test's today.
+      const item = await db.plaidItem.create({
+        data: {
+          householdId: household.id,
+          environment: "SANDBOX",
+          plaidItemId: `item_e2e_payments_${randomBytes(4).toString("hex")}`,
+          accessTokenCiphertext: SENTINEL_CIPHERTEXT,
+          institutionName: "E2E Payments Bank",
+          status: "ACTIVE",
+        },
+      });
+      const account = await db.account.create({
+        data: {
+          householdId: household.id,
+          plaidItemId: item.id,
+          externalAccountId: "acct_e2e_bills",
+          attachedAt: new Date(),
+          name: "E2E Bills Checking",
+          mask: "7777",
+          type: "depository",
+          subtype: "checking",
+          currency: "USD",
+        },
+      });
+      await db.balanceSnapshot.create({
+        data: { accountId: account.id, observedAt: new Date(), current: "3000", available: "3000", currency: "USD", source: "ACCOUNTS_GET" },
+      });
+      const day = (daysAgo: number) => new Date(Date.parse(`${extra}T00:00:00Z`) - daysAgo * 86_400_000);
+      const rows = [
+        { id: "lawn1", amount: "60.00", daysAgo: 35 },
+        { id: "lawn2", amount: "60.00", daysAgo: 20 },
+        { id: "lawn3", amount: "62.50", daysAgo: 13 },
+        { id: "lawn4", amount: "58.00", daysAgo: 7 },
+      ];
+      for (const r of rows) {
+        await db.transaction.create({
+          data: {
+            accountId: account.id,
+            plaidItemId: item.id,
+            providerTransactionId: `txn_e2e_${r.id}`,
+            amount: r.amount,
+            currency: "USD",
+            date: day(r.daysAgo),
+            description: `GREENTHUMB LAWN ${r.id.toUpperCase()}`,
+            merchantName: "E2E Greenthumb Lawn",
+          },
+        });
+      }
+      console.log(JSON.stringify({ accountId: account.id }));
     } else if (command === "delete" && argument && EMAIL_PATTERN.test(argument)) {
       const user = await db.user.findUnique({
         where: { email: argument },
@@ -215,7 +275,7 @@ async function main() {
       await db.plaidItem.deleteMany({ where: { householdId: { in: householdIds } } });
       await db.household.deleteMany({ where: { id: { in: householdIds } } });
     } else {
-      throw new Error("Usage: e2e-user.mts create | reset-throttle | seed-bank | delete <e2e.xxxxxxxxxxxx@example.test>");
+      throw new Error("Usage: e2e-user.mts create | reset-throttle | seed-bank | seed-payments | delete <e2e.xxxxxxxxxxxx@example.test>");
     }
   } finally {
     await db.$disconnect();

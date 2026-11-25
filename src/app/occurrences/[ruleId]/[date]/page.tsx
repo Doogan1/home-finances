@@ -7,10 +7,13 @@ import { NeedsTimeZone } from "@/components/forecast/forecast-notices";
 import { money, signedMoney } from "@/components/forecast/money";
 import { safeBack } from "@/components/forecast/occurrence-link";
 import { OccurrenceForm, ResetEditButton } from "@/components/forecast/occurrence-form";
+import { UndoMatchButton } from "@/components/payments/match-buttons";
 import { STATUS_LABELS } from "@/components/forecast/status";
 import { isCashAccount } from "@/features/forecast/engine";
 import { occurrenceAt } from "@/features/forecast/occurrences";
 import { loadHouseholdForecast } from "@/features/forecast/page-data";
+import { listPayments } from "@/features/payments/queries";
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { accountLookup, listOverrides } from "@/features/rules/queries";
 import { formatIsoDate } from "@/features/rules/summary";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
@@ -44,7 +47,12 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
   const rule = data.input.rules.find((r) => r.id === ruleId);
   if (!rule) notFound();
   const db = getDb();
-  const [edits, accounts] = await Promise.all([listOverrides(db, householdId, ruleId), accountLookup(db, householdId)]);
+  const [edits, accounts, rulePayments] = await Promise.all([
+    listOverrides(db, householdId, ruleId),
+    accountLookup(db, householdId),
+    listPayments(db, householdId, { environment: getPlaidEnvironment() }, ruleId),
+  ]);
+  const payments = rulePayments.filter((p) => p.scheduledOn === date);
   const edit = edits.find((e) => e.scheduledOn === date) ?? null;
   const occurrence = occurrenceAt(rule, data.input.overrides, date);
   if (!occurrence && !edit) notFound();
@@ -91,14 +99,30 @@ async function Occurrence({ params, searchParams }: { params: Params; searchPara
         <span className={occurrence.estimate ? "estimate" : undefined}>{money(occurrence.amount)}</span>
         {occurrence.estimate ? " (estimate)" : " (confirmed)"} · {shares.join(" · ")}
       </p>
-      <OccurrenceForm
-        ruleId={rule.id}
-        scheduledOn={date}
-        estimate={version.amount}
-        current={edit && { status: edit.status, confirmedAmount: edit.confirmedAmount, movedTo: edit.movedTo, note: edit.note }}
-        input={data.input}
-        back={back}
-      />
+      {payments.length > 0 ? (
+        <section className="notice notice-ok" aria-label="Payments">
+          <p>The bank shows this paid, so the forecast uses the real amount and day:</p>
+          <ul>
+            {payments.map((p) => (
+              <li key={p.id}>
+                <Link href={`/transactions/${p.transactionId}`}>{p.payee}</Link>, {money(p.cents)} on {formatIsoDate(p.date)},{" "}
+                {accounts.get(p.accountId)?.name ?? "Unknown account"}{" "}
+                {p.source === "AUTO" && <span className="chip chip-muted">Auto</span>} <UndoMatchButton transactionId={p.transactionId} />
+              </li>
+            ))}
+          </ul>
+          <p className="muted">To change this date by hand, undo the match first. Your own edit, if you made one, comes back.</p>
+        </section>
+      ) : (
+        <OccurrenceForm
+          ruleId={rule.id}
+          scheduledOn={date}
+          estimate={rule.typical && date >= rule.typical.from ? rule.typical.amount : version.amount}
+          current={edit && { status: edit.status, confirmedAmount: edit.confirmedAmount, movedTo: edit.movedTo, note: edit.note }}
+          input={data.input}
+          back={back}
+        />
+      )}
     </>
   );
 }

@@ -91,6 +91,12 @@ describe("secrets stay on the server", () => {
       "src/features/forecast/effect.ts", // pure: an edit's effect on the lowest point, run by the panel in the browser
       "src/features/forecast/register.ts", // pure: the Register's rows
       "src/features/forecast/calendar.ts", // pure: the Calendar's month grid
+      "src/features/forecast/past.ts", // pure: balances before the forecast, from saved balances and transactions
+      "src/features/payments/payee.ts", // pure: a transaction's payee as a stable key
+      "src/features/payments/match.ts", // pure: which transactions look like which bills
+      "src/features/payments/layer.ts", // pure: payments over occurrence edits, and typical amounts
+      "src/features/payments/differ.ts", // pure: fixed bills whose payments say otherwise
+      "src/features/payments/history.ts", // pure: a rule's past, planned against paid
       "src/features/import/workbook.ts", // reads a workbook's bytes into plain values; no database, no files
       "src/features/import/parse.ts", // pure: sheets to typed rows
       "src/features/import/choices.ts", // zod schema for choices.json only
@@ -204,11 +210,13 @@ describe("logging cannot leak", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the only logging in the app is in the four reviewed places", () => {
+  it("the only logging in the app is in the six reviewed places", () => {
     const loggers = sourceFiles.filter((f) => /console\.(log|info|warn|error|debug)\(/.test(read(f))).map(rel);
 
     expect(loggers).toEqual([
       "src/features/accounts/http.ts",
+      "src/features/payments/http.ts",
+      "src/features/payments/service.ts",
       "src/features/plaid/http.ts",
       "src/features/plaid/sync.ts",
       "src/features/rules/http.ts",

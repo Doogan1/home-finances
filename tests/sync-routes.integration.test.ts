@@ -146,11 +146,11 @@ describe("POST …/connections/[id]/sync", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
-    expect(JSON.parse(text)).toMatchObject({ status: "SUCCEEDED", added: 1, modified: 0, removed: 0, errorCode: null });
+    expect(JSON.parse(text)).toMatchObject({ status: "SUCCEEDED", added: 1, modified: 0, removed: 0, errorCode: null, matched: 0 });
     expect(text).not.toContain("secret_cursor_value");
     expect(text).not.toContain(ACCESS_TOKEN);
     expect(Object.keys(JSON.parse(text)).sort()).toEqual([
-      "added", "completedAt", "errorCode", "modified", "providerStatus", "removed", "runId", "status",
+      "added", "completedAt", "errorCode", "matched", "modified", "providerStatus", "removed", "runId", "status",
     ]);
   });
 

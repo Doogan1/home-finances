@@ -82,6 +82,28 @@ test("a payment is confirmed once, the rest match themselves, and a match can be
   await page.getByRole("button", { name: "Match" }).click();
   const match = page.getByRole("region", { name: "Match" });
   await expect(match).toContainText(`Paid E2E Lawn care, due ${shown(plusDays(now, -14))}. Matched by hand.`);
+
+  // The bill's own page shows its past, and what the payments say about its amount.
+  await page.goto(`/bills/${ruleId}`);
+  const past = page.getByRole("table", { name: "Past" });
+  await expect(past.getByRole("row", { name: new RegExp(`^${shown(plusDays(now, -14))}`) })).toContainText("+$2.50 against $60.00");
+  await expect(past.getByRole("row", { name: new RegExp(`^${shown(now)}`) })).toContainText("No payment matched (planned $60.00)");
+  await expect(past.getByRole("row", { name: /^No due date/ })).toContainText("From before its first date");
+  const estimate = page.getByRole("region", { name: "Estimate" });
+  await expect(estimate).toContainText("Its payments are typically $63.25, the middle of its last 4 payments ($58.00 to $66.00)");
+
+  // Home says a fixed bill's payments differ; letting it vary makes the forecast follow them.
+  await page.goto(`/?account=${accountId}`);
+  await expect(attention).toContainText("E2E Lawn care is planned at $60.00, but its last 4 payments were typically $63.25");
+  await page.goto(`/bills/${ruleId}`);
+  await estimate.getByRole("button", { name: "Let the amount vary" }).click();
+  await expect(estimate).toContainText("Coming dates use $63.25");
+  await expect(page.getByRole("table", { name: "Next 10" }).getByRole("row").nth(2)).toContainText("$63.25");
+  await page.goto(`/?account=${accountId}`);
+  await expect(attention).not.toContainText("is planned at");
+  await expect(page.getByRole("table", { name: "Next 7 days" }).getByRole("row", { name: /E2E Lawn care/ }).first()).toContainText("-$63.25");
+  await page.goto("/bills");
+  await expect(page.getByRole("row", { name: /E2E Lawn care/ })).toContainText("about $63.25");
 });
 
 test("the payment routes refuse anonymous callers and unknown transactions", async ({ page, request }) => {

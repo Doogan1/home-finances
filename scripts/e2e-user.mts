@@ -230,8 +230,8 @@ async function main() {
       });
       const day = (daysAgo: number) => new Date(Date.parse(`${extra}T00:00:00Z`) - daysAgo * 86_400_000);
       const rows = [
-        { id: "lawn1", amount: "60.00", daysAgo: 35 },
-        { id: "lawn2", amount: "60.00", daysAgo: 20 },
+        { id: "lawn1", amount: "64.00", daysAgo: 35 },
+        { id: "lawn2", amount: "66.00", daysAgo: 20 },
         { id: "lawn3", amount: "62.50", daysAgo: 13 },
         { id: "lawn4", amount: "58.00", daysAgo: 7 },
       ];

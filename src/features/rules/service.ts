@@ -128,7 +128,13 @@ export async function updateRule(db: PrismaClient, householdId: string, ruleId: 
     if (input.paysAccountId !== undefined) await checkPaysAccount(tx, householdId, rule.kind, input.paysAccountId);
     await tx.rule.update({
       where: { id: ruleId },
-      data: { name: input.name, category: input.category, notes: input.notes, paysAccountId: input.paysAccountId },
+      data: {
+        name: input.name,
+        category: input.category,
+        notes: input.notes,
+        paysAccountId: input.paysAccountId,
+        estimateMode: input.estimateMode,
+      },
     });
   });
 }

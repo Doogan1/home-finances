@@ -6,20 +6,27 @@ import { z } from "zod";
 import { TimeZoneForm } from "@/components/accounts/time-zone-form";
 import { occurrenceHref } from "@/components/forecast/occurrence-link";
 import { STATUS_LABELS } from "@/components/forecast/status";
+import { money, signedMoney } from "@/components/forecast/money";
 import { ArchiveRuleButton } from "@/components/rules/archive-rule-button";
 import { ChangeFromForm } from "@/components/rules/change-from-form";
 import { EditVersionForm } from "@/components/rules/edit-version-form";
+import { EstimateModeForm } from "@/components/rules/estimate-mode-form";
 import { RuleDetailsForm } from "@/components/rules/rule-details-form";
 import { StopForm } from "@/components/rules/stop-form";
+import { differs } from "@/features/payments/differ";
+import { paymentHistory, type HistoryRow } from "@/features/payments/history";
+import { TYPICAL_NEEDS, paymentTotals, usableTypical, type Typical } from "@/features/payments/layer";
+import { listPayments, toLayerPayment } from "@/features/payments/queries";
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import { formatMoney } from "@/features/plaid/format";
 import type { AccountChoice } from "@/features/rules/form-drafts";
 import { accountLookup, getRule, listAccountChoices, listOverrides, type OverrideView, type RuleView } from "@/features/rules/queries";
 import { nextOccurrences, ruleOccurrences } from "@/features/rules/recurrence";
 import { splitAmount } from "@/features/rules/splits";
-import { describeAllocations, describeSchedule, formatIsoDate, latestVersion, ruleState } from "@/features/rules/summary";
+import { describeAllocations, describeSchedule, formatIsoDate, latestVersion, ruleState, versionFor } from "@/features/rules/summary";
 import type { StoredVersion } from "@/features/rules/versions";
 import { requireHouseholdOrRedirect } from "@/lib/auth/household";
-import { todayIn, type IsoDate } from "@/lib/calendar-date";
+import { addDays, todayIn, type IsoDate } from "@/lib/calendar-date";
 import { fromCents, toCents } from "@/lib/cents";
 import { getDb } from "@/lib/db";
 
@@ -46,12 +53,13 @@ async function Rule({ params }: { params: Params }) {
   if (!z.uuid().safeParse(id).success) notFound();
   const { householdId } = await requireHouseholdOrRedirect();
   const db = getDb();
-  const [rule, household, accounts, choices, overrides] = await Promise.all([
+  const [rule, household, accounts, choices, overrides, payments] = await Promise.all([
     getRule(db, householdId, id),
     db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } }),
     accountLookup(db, householdId),
     listAccountChoices(db, householdId),
     listOverrides(db, householdId, id),
+    listPayments(db, householdId, { environment: getPlaidEnvironment() }, id),
   ]);
   if (!rule) notFound();
 
@@ -59,6 +67,10 @@ async function Rule({ params }: { params: Params }) {
   const nameOf: NameOf = (accountId) => accounts.get(accountId)?.name ?? "Unknown account";
   const latest = latestVersion(rule.versions);
   const state = today ? ruleState(rule, today) : null;
+  const forecastRule = { id: rule.id, name: rule.name, kind: rule.kind, versions: rule.versions };
+  const layer = payments.map(toLayerPayment);
+  const typical = usableTypical(forecastRule, layer);
+  const inForecast = rule.estimateMode === "VARIES" && typical ? typical : null;
   const heading = [rule.kind === "INCOME" ? "Income" : "Bill", rule.category, rule.paysAccount && `pays ${rule.paysAccount.name}`]
     .filter(Boolean)
     .join(" · ");
@@ -93,7 +105,40 @@ async function Rule({ params }: { params: Params }) {
       </ol>
 
       {!rule.archivedAt && <Actions rule={rule} today={today} choices={choices} accounts={accounts} />}
-      {today && !rule.archivedAt && <NextOccurrences ruleId={rule.id} versions={rule.versions} today={today} overrides={overrides} nameOf={nameOf} />}
+      {today && (
+        <Estimate
+          ruleId={rule.id}
+          archived={rule.archivedAt !== null}
+          mode={rule.estimateMode}
+          planned={versionFor(rule.versions, today).amount}
+          typical={typical}
+          payments={paymentTotals(forecastRule, layer).length}
+        />
+      )}
+      {today && !rule.archivedAt && (
+        <NextOccurrences
+          ruleId={rule.id}
+          versions={rule.versions}
+          today={today}
+          overrides={overrides}
+          nameOf={nameOf}
+          typical={inForecast}
+          paid={new Set(payments.flatMap((p) => (p.scheduledOn ? [p.scheduledOn] : [])))}
+        />
+      )}
+      {today && (
+        <Payments
+          ruleId={rule.id}
+          kind={rule.kind}
+          rows={paymentHistory(
+            forecastRule,
+            overrides.map((o) => ({ ...o, ruleId: rule.id })),
+            payments,
+            addDays(today, -HISTORY_DAYS),
+            today,
+          )}
+        />
+      )}
       <EditsOffSchedule ruleId={rule.id} archived={rule.archivedAt !== null} versions={rule.versions} overrides={overrides} />
     </>
   );
@@ -143,18 +188,139 @@ function Actions({
   );
 }
 
+/** Where the amount for coming dates comes from, and what the real payments say about it. */
+function Estimate({
+  ruleId,
+  archived,
+  mode,
+  planned,
+  typical,
+  payments,
+}: {
+  ruleId: string;
+  archived: boolean;
+  mode: "FIXED" | "VARIES";
+  planned: string;
+  typical: Typical | null;
+  payments: number;
+}) {
+  const plan = formatMoney(planned, "USD");
+  const working = typical && (
+    <>
+      {money(typical.cents)}, the middle of its last {typical.count} payments ({money(typical.low)} to {money(typical.high)})
+    </>
+  );
+  return (
+    <section aria-labelledby="estimate-heading">
+      <h2 id="estimate-heading">Estimate</h2>
+      {mode === "VARIES" ? (
+        <p>
+          <span className="chip chip-ok">Varies</span>{" "}
+          {typical ? (
+            <>Coming dates use {working}. The amount you typed, {plan}, is used if there are ever too few payments.</>
+          ) : (
+            <>
+              Coming dates use {plan} for now. Once {TYPICAL_NEEDS} payments are matched ({payments} so far), they use what the
+              payments typically were.
+            </>
+          )}
+        </p>
+      ) : (
+        <p>
+          <span className="chip chip-muted">Fixed</span> Coming dates use the amount you typed, {plan}.{" "}
+          {typical && differs(toCents(planned), typical.cents) ? (
+            <strong>Its payments are typically {working}.</strong>
+          ) : typical ? (
+            <>Its payments agree: typically {working}.</>
+          ) : null}
+        </p>
+      )}
+      {!archived && <EstimateModeForm ruleId={ruleId} mode={mode} />}
+    </section>
+  );
+}
+
+const HISTORY_DAYS = 365;
+const HISTORY_SHOWN = 30;
+
+/** The rule's past: each due date with what was planned and what the bank shows, and payments from before it began. */
+function Payments({ ruleId, kind, rows }: { ruleId: string; kind: "INCOME" | "BILL"; rows: HistoryRow[] }) {
+  if (rows.length === 0) return null;
+  const word = kind === "INCOME" ? "Received" : "Paid";
+  const shown = rows.slice(0, HISTORY_SHOWN);
+  return (
+    <>
+      <h2>Past</h2>
+      <div className="panel panel-flush">
+        <table className="table stack" aria-label="Past">
+          <thead>
+            <tr>
+              <th>Due</th>
+              <th className="num">{word}</th>
+              <th>From the bank</th>
+              <th>Against the plan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((row) => (
+              <tr key={row.scheduledOn ?? row.payments[0].transactionId}>
+                <td className="c-main">
+                  {row.scheduledOn ? (
+                    <Link href={occurrenceHref(ruleId, row.scheduledOn, `/bills/${ruleId}`)}>{formatIsoDate(row.scheduledOn)}</Link>
+                  ) : (
+                    <span className="muted">No due date</span>
+                  )}
+                </td>
+                <td className="num c-amt">{row.paid === null ? "—" : money(row.paid)}</td>
+                <td className="c-sub">
+                  {row.payments.map((p, i) => (
+                    <span key={p.transactionId}>
+                      {i > 0 && " · "}
+                      <Link href={`/transactions/${p.transactionId}`}>{p.payee}</Link>, {formatIsoDate(p.date)}
+                      {p.source === "AUTO" && <span className="chip chip-muted">Auto</span>}
+                    </span>
+                  ))}
+                </td>
+                <td className="c-sub2">{againstPlan(row)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > shown.length && <p className="muted page-note">Showing the latest {shown.length} of the past year.</p>}
+    </>
+  );
+}
+
+function againstPlan(row: HistoryRow): string {
+  if (row.paid === null) {
+    if (row.status === "PAID") return "Marked paid by hand";
+    if (row.status === "SKIPPED") return "Skipped";
+    return `No payment matched (planned ${row.planned === null ? "" : money(row.planned)})`;
+  }
+  if (row.planned === null) return "From before its first date";
+  const gap = row.paid - row.planned;
+  return gap === 0n ? "As planned" : `${signedMoney(gap)} against ${money(row.planned)}`;
+}
+
 function NextOccurrences({
   ruleId,
   versions,
   today,
   overrides,
   nameOf,
+  typical,
+  paid,
 }: {
   ruleId: string;
   versions: StoredVersion[];
   today: IsoDate;
   overrides: OverrideView[];
   nameOf: NameOf;
+  /** Set for a rule that varies: the amount coming dates use unless one is confirmed. */
+  typical: Typical | null;
+  /** Due dates the bank already shows paid. */
+  paid: ReadonlySet<IsoDate>;
 }) {
   const edits = new Map(overrides.map((edit) => [edit.scheduledOn, edit]));
   const upcoming = nextOccurrences(versions, today, 10);
@@ -183,7 +349,7 @@ function NextOccurrences({
           <tbody>
             {upcoming.map(({ date, version }) => {
               const edit = edits.get(date);
-              const amount = edit?.confirmedAmount ?? version.amount;
+              const amount = edit?.confirmedAmount ?? (typical ? fromCents(typical.cents) : version.amount);
               const shares = splitAmount(toCents(amount), version.allocations)
                 .map((share) => `${nameOf(share.accountId)} ${formatMoney(fromCents(share.cents), "USD")}`)
                 .join(" · ");
@@ -195,7 +361,7 @@ function NextOccurrences({
                   </td>
                   <td className="num c-amt">{formatMoney(amount, "USD")}</td>
                   <td className="c-sub">{shares}</td>
-                  <td className="c-side">{STATUS_LABELS[edit?.status ?? "PLANNED"]}</td>
+                  <td className="c-side">{paid.has(date) ? "Paid (see Past)" : STATUS_LABELS[edit?.status ?? "PLANNED"]}</td>
                   <td className="c-note">{edit?.note ?? ""}</td>
                 </tr>
               );

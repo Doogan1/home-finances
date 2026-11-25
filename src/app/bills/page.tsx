@@ -1,3 +1,6 @@
+import { usableTypical } from "@/features/payments/layer";
+import { listPayments, toLayerPayment } from "@/features/payments/queries";
+import { getPlaidEnvironment } from "@/features/plaid/environment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -67,7 +70,8 @@ type Row = {
   monthly: Cents | null;
 };
 
-function describeRow(rule: RuleView, today: IsoDate, accounts: Map<string, { name: string; type: string }>): Row {
+/** `typical` is set for a rule that varies and has enough payments: the forecast uses it, so the list shows it. */
+function describeRow(rule: RuleView, today: IsoDate, accounts: Map<string, { name: string; type: string }>, typical: Cents | null): Row {
   const version = versionFor(rule.versions, today);
   const named = version.allocations.map((a) => ({ ...a, accountName: accounts.get(a.accountId)?.name ?? "Unknown account" }));
   const pays = rule.paysAccount ? ` → ${rule.paysAccount.name}` : "";
@@ -78,8 +82,8 @@ function describeRow(rule: RuleView, today: IsoDate, accounts: Map<string, { nam
     group: ruleGroup(rule.kind, version.allocations.map((a) => accounts.get(a.accountId)?.type ?? "")),
     schedule: describeSchedule(version),
     accounts: `${describeAllocations(named)}${pays}`,
-    amount: formatMoney(version.amount, "USD"),
-    monthly: monthlyEquivalent(toCents(version.amount), version),
+    amount: typical === null ? formatMoney(version.amount, "USD") : `about ${money(typical)}`,
+    monthly: monthlyEquivalent(typical ?? toCents(version.amount), version),
   };
 }
 
@@ -107,10 +111,11 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
   const filter: Filter = FILTERS.find((f) => f === show) ?? "active";
   const { householdId } = await requireHouseholdOrRedirect();
   const db = getDb();
-  const [household, rules, accounts] = await Promise.all([
+  const [household, rules, accounts, payments] = await Promise.all([
     db.household.findUniqueOrThrow({ where: { id: householdId }, select: { timeZone: true } }),
     listRules(db, householdId),
     accountLookup(db, householdId),
+    listPayments(db, householdId, { environment: getPlaidEnvironment() }),
   ]);
 
   if (!household.timeZone) {
@@ -126,7 +131,9 @@ async function Rules({ searchParams }: { searchParams: SearchParams }) {
   }
 
   const today = todayIn(household.timeZone);
-  const rows = rules.map((rule) => describeRow(rule, today, accounts)).filter((row) => filter === "all" || row.state === filter);
+  const layer = payments.map(toLayerPayment);
+  const typicalOf = (rule: RuleView) => (rule.estimateMode === "VARIES" ? (usableTypical(rule, layer)?.cents ?? null) : null);
+  const rows = rules.map((rule) => describeRow(rule, today, accounts, typicalOf(rule))).filter((row) => filter === "all" || row.state === filter);
   return (
     <>
       <FilterLinks current={filter} />

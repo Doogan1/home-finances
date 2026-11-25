@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { occurrencesBetween } from "@/features/forecast/occurrences";
+import { paymentHistory, type HistoryPayment } from "@/features/payments/history";
 import { layerPayments, paymentTotals, typicalAmount, usableTypical, type LayerPayment } from "@/features/payments/layer";
 import { edit, rule, version } from "./helpers/forecast-fixtures";
 
@@ -118,5 +119,39 @@ describe("a rule whose amount varies", () => {
       ["2026-12-01", 11725n, true],
       ["2027-01-01", 9000n, false],
     ]);
+  });
+});
+
+describe("paymentHistory", () => {
+  const bank = (patch: Partial<HistoryPayment>): HistoryPayment => ({
+    transactionId: "t1",
+    scheduledOn: "2026-12-01",
+    date: "2026-11-28",
+    cents: 11250n,
+    payee: "City Power",
+    source: "AUTO",
+    ...patch,
+  });
+
+  it("lists each due date up to today with what was planned and what was paid, newest first", () => {
+    const rows = paymentHistory(
+      rule(),
+      [edit({ scheduledOn: "2026-11-01", status: "PAID", confirmedAmount: "98" })],
+      [bank({}), bank({ transactionId: "t0", scheduledOn: null, date: "2026-09-30", cents: 9000n })],
+      "2026-06-01",
+      "2026-12-14",
+    );
+    expect(rows).toEqual([
+      { scheduledOn: "2026-12-01", date: "2026-11-28", planned: 10000n, status: "PLANNED", payments: [bank({})], paid: 11250n },
+      { scheduledOn: "2026-11-01", date: "2026-11-01", planned: 9800n, status: "PAID", payments: [], paid: null },
+      { scheduledOn: null, date: "2026-09-30", planned: null, status: null, payments: [expect.objectContaining({ transactionId: "t0" })], paid: 9000n },
+    ]);
+  });
+
+  it("includes a later due date only when it is already paid, and never uses the typical amount as the plan", () => {
+    const varies = rule({ typical: { amount: "500", from: "2026-11-01" } });
+    const early = bank({ scheduledOn: "2027-01-01", date: "2026-12-12" });
+    expect(paymentHistory(varies, [], [], "2026-11-15", "2026-12-14").map((r) => [r.scheduledOn, r.planned])).toEqual([["2026-12-01", 10000n]]);
+    expect(paymentHistory(varies, [], [early], "2026-11-15", "2026-12-14").map((r) => r.scheduledOn)).toEqual(["2027-01-01", "2026-12-01"]);
   });
 });

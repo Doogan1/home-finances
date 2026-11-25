@@ -110,6 +110,8 @@ export const updateRuleInput = z
     category: optionalText(40).optional(),
     notes: optionalText(500).optional(),
     paysAccountId: z.uuid().nullable().optional(),
+    // Fixed: the forecast uses the amount typed. Varies: what recent payments typically were.
+    estimateMode: z.enum(["FIXED", "VARIES"]).optional(),
   })
   .refine((input) => Object.keys(input).length > 0, "Nothing to change");
 export type UpdateRuleInput = z.infer<typeof updateRuleInput>;
